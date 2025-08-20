@@ -484,19 +484,9 @@
         <button onclick="sendGift('😂')">😂 ضحك</button>
       </div>
     </div>
-    <button id="joinBtn">انضم مع المايك 🎤</button>
     <div class="settings-box gifts">
       <div id="settings">
         <h3>⚙️ الإعدادات</h3>
-        <!-- اعادات المكرفون والدردشة صوت -->
-        <!-- <div class="voice-controls">
-          <button id="micButton" class="">🎤</button>
-          <button id="speakerButton" class="">🔊</button>
-        </div> -->
-        <!-- <div class="voice-controls"> -->
-          <!-- <button id="micButton" class="">🎤</button> -->
-          
-        <!-- </div> -->
         <!-- عرض رسائل التصويت -->
         <div class="setting-item">
           <label class="checkbox-label">
@@ -952,7 +942,7 @@
 
   const micBtn = document.createElement('button');
   micBtn.id = 'micButton';
-  micBtn.textContent = '🎤'; 
+  micBtn.textContent = '🛑'; 
   micBtn.title = 'تشغيل/إيقاف الميكروفون';
   micBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
 
@@ -980,10 +970,28 @@ let speakersOn = true;
 const peers = {};              
 const peerAudioEls = {};       
 
+async function initMic() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    console.log("مايكروفون شغال مباشرة عند فتح الصفحة");
+
+    // اربط الـ stream بكل peer جديد
+    Object.values(peers).forEach(pc => {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    });
+  } catch (err) {
+    console.error("فشل الحصول على المايك:", err);
+    alert("لازم تسمح للمتصفح باستخدام الميكروفون!");
+  }
+}
+
+// استدعاء مباشرة عند تحميل الصفحة
+window.addEventListener("load", initMic);
+
 function updateMicIcon() {
   const btn = document.getElementById('micButton');
   if (!btn) return;
-  btn.textContent = micOn ? '🛑' : '🎤';
+  btn.textContent = micOn ? '🎤' : '🛑';
 }
 
 function updateSpeakerIcon() {
@@ -1030,27 +1038,24 @@ function createPeerConnection(peerId) {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   });
 
+  // نضيف المايك فقط إذا كان شغال مسبقاً
   if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   }
 
-  pc.onicecandidate = (e) => {
-    if (e.candidate) {
-      socket.emit('voice-ice', { roomCode, to: peerId, candidate: e.candidate });
-    }
-  };
-
   pc.ontrack = (e) => {
     const audio = createRemoteAudioEl(peerId);
     audio.srcObject = e.streams[0];
-    audio.autoplay = true;
-    audio.playsInline = true;  // مهم للموبايل
-    audio.muted = !speakersOn; 
-    audio.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
+  };
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      socket.emit("voice-ice", { roomCode, to: peerId, candidate: e.candidate });
+    }
   };
 
   pc.onconnectionstatechange = () => {
-    if (['failed','disconnected','closed'].includes(pc.connectionState)) {
+    if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
       removePeer(peerId);
     }
   };
@@ -1058,6 +1063,7 @@ function createPeerConnection(peerId) {
   peers[peerId] = pc;
   return pc;
 }
+
 
 async function callPeer(peerId) {
   const pc = peers[peerId] || createPeerConnection(peerId);
@@ -1126,7 +1132,7 @@ document.getElementById('micButton')?.addEventListener('click', async () => {
         });
       });
 
-      console.log("🎤 الميكروفون اشتغل على الهاتف/الكمبيوتر");
+      console.log("الميكروفون اشتغل على الهاتف/الكمبيوتر");
     } else {
       // تشغيل/إيقاف المايك
       micOn = !micOn;
