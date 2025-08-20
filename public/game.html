@@ -493,6 +493,10 @@
           <button id="micButton" class="">🎤</button>
           <button id="speakerButton" class="">🔊</button>
         </div> -->
+        <!-- <div class="voice-controls"> -->
+          <!-- <button id="micButton" class="">🎤</button> -->
+          <button id="joinBtn">انضم مع المايك 🎤</button>
+        <!-- </div> -->
         <!-- عرض رسائل التصويت -->
         <div class="setting-item">
           <label class="checkbox-label">
@@ -523,6 +527,7 @@
       <button onclick="goToHome()" id="backToHomeButton" class="back-button">
         🔙 رجوع إلى الصفحة الرئيسية
       </button>
+      
     </div>
   </div>
 
@@ -1078,7 +1083,7 @@ async function enableMic() {
     alert("لازم تسمح باستخدام الميكروفون!");
   }
 }
-
+const joinBtn = document.getElementById("joinBtn");
 joinBtn.addEventListener("click", () => {
   enableMic();
   socket.emit("voice-join", { room: "mafia" });
