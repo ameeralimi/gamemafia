@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الهوست - لعبة المافيا</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Cairo', sans-serif;
+      background-color: #1e1e2f;
+      color: white;
+    }
+    .container {
+      padding: 20px;
+    }
+    .room-info {
+      background-color: #2d2d44;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    .players {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 15px;
+      position: relative;
+    }
+    .player-card {
+      background-color: #3a3a5c;
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+      position: relative;
+    }
+    .player-card img {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+    }
+    .status {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+    }
+    .online { background: green; }
+    .idle { background: orange; }
+    .offline { background: gray; }
+    .chat-section, .gifts-section {
+      margin-top: 25px;
+      background-color: #2d2d44;
+      padding: 15px;
+      border-radius: 10px;
+    }
+    #chatBox {
+      height: 150px;
+      overflow-y: auto;
+      background: #1e1e2f;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #444;
+    }
+    .chat-message {
+      margin: 5px 0;
+    }
+    .chat-input-wrapper {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    #chatInput {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #444;
+      background: #1e1e2f;
+      color: white;
+    }
+    #sendButton {
+      padding: 10px 20px;
+      border-radius: 8px;
+      background-color: #ffcc00;
+      color: black;
+      border: none;
+      cursor: pointer;
+    }
+    .gifts button {
+      margin: 5px;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background-color: #ffcc00;
+      cursor: pointer;
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 10px;
+      background: #1e1e2f;
+      color: white;
+      border: 1px solid #444;
+    }
+    .gift-anim {
+      position: absolute;
+      z-index: 10;
+      font-size: 30px;
+      animation: flyGift 1s ease-in-out forwards;
+    }
+    @keyframes flyGift {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(50px, -120px) scale(1.5); opacity: 0; }
+    }
+    .start-button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #00cc66;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .kick-button {
+      margin-top: 10px;
+      padding: 5px 10px;
+      background-color: #ff4d4d;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="room-info">
+      <h2>مرحباً، <span id="playerName"></span></h2>
+      <p>رقم الطاولة: <strong id="roomCode"></strong></p>
+    </div>
+
+    <h3>اللاعبون المتصلون</h3>
+    <div class="players" id="playersList"></div>
+
+    <div class="chat-section">
+      <h4>الدردشة</h4>
+      <div id="chatBox"></div>
+      <div class="chat-input-wrapper">
+        <input type="text" id="chatInput" placeholder="اكتب رسالة...">
+        <button id="sendButton" onclick="sendMessage()">إرسال</button>
+      </div>
+    </div>
+
+    <div class="gifts-section">
+      <h4>أرسل هدية</h4>
+      <select id="giftTarget">
+        <option value="all">لكل اللاعبين</option>
+      </select>
+      <div class="gifts">
+        <button onclick="sendGift('🌹')">🌹 وردة</button>
+        <button onclick="sendGift('🍅')">🍅 طماطة</button>
+        <button onclick="sendGift('💣')">💣 قنبلة</button>
+        <button onclick="sendGift('🐴')">🐴 حمار</button>
+      </div>
+    </div>
+
+    <button class="start-button" onclick="startGame()">ابدأ اللعبة</button>
+    <button onclick="goToHome()" id="backToHomeButton" style="margin-top: 20px; padding: 12px 20px; background-color: #888; color: white; border: none; border-radius: 10px; cursor: pointer;">
+      🔙 رجوع إلى الصفحة الرئيسية
+    </button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    function goToHome() {
+        window.location.href = 'index.html';
+    }
+    const socket = io();
+    const playerName = getCookie('playerName');
+    const roomCode = getCookie('roomCode');
+
+    if (!playerName || !roomCode) {
+      window.location.href = 'index.html';
+    }
+
+    document.getElementById('playerName').textContent = playerName;
+    document.getElementById('roomCode').textContent = roomCode;
+
+    socket.emit('player-join-room', { playerName, roomCode });
+
+    socket.on('update-players', players => {
+      const list = document.getElementById('playersList');
+      const targetSelect = document.getElementById('giftTarget');
+      list.innerHTML = '';
+      targetSelect.innerHTML = '<option value="all">لكل اللاعبين</option>';
+
+      players.forEach(player => {
+        const statusClass = player.status === 'online' ? 'online' : player.status === 'idle' ? 'idle' : 'offline';
+        const cardId = `player-${player.name.replace(/\s/g, '-')}`;
+        list.innerHTML += `
+          <div class="player-card" id="${cardId}">
+            <div class="status ${statusClass}"></div>
+            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${player.name}" />
+            <h4>${player.name}</h4>
+            <button class="kick-button" onclick="kickPlayer('${player.name}')">طرد</button>
+          </div>
+        `;
+        targetSelect.innerHTML += `<option value="${player.name}">${player.name}</option>`;
+      });
+    });
+
+    function sendMessage() {
+      const msg = document.getElementById('chatInput').value.trim();
+      if (!msg) return;
+      socket.emit('chat-message', { roomCode, playerName, message: msg });
+      document.getElementById('chatInput').value = '';
+    }
+
+    document.getElementById('chatInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    socket.on('chat-message', ({ playerName, message }) => {
+      const box = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      div.className = 'chat-message';
+      div.innerHTML = `<strong>${playerName}:</strong> ${message}`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    });
+
+    function sendGift(gift) {
+      const target = document.getElementById('giftTarget').value;
+      socket.emit('send-gift', { roomCode, playerName, gift, target });
+    }
+
+    socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
+      const recipientList = target === 'all' ? Array.from(document.querySelectorAll('.player-card')) : [document.getElementById(`player-${target.replace(/\s/g, '-')}`)];
+
+      recipientList.forEach(card => {
+        if (!card) return;
+        const anim = document.createElement('div');
+        anim.className = 'gift-anim';
+        anim.textContent = gift;
+        card.appendChild(anim);
+        setTimeout(() => anim.remove(), 1000);
+      });
+
+      const box = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      div.className = 'chat-message';
+      const msg = target === 'all' ? `${sender} أرسل هدية ${gift} للجميع 🎁` : `${sender} أرسل ${gift} إلى ${target}`;
+      div.innerHTML = `<em>${msg}</em>`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    });
+
+    function kickPlayer(playerName) {
+      socket.emit('kick-player', { roomCode, playerName });
+    }
+
+    function startGame() {
+      socket.emit('start-game', { roomCode });
+    }
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    socket.on('game-started', ({ role, roomCode, round }) => {
+      document.cookie = `role=${role}; path=/`;
+      document.cookie = `round=${round}; path=/`;
+      window.location.href = 'game.html';
+    });
+
+  </script>
+</body>
+</html>

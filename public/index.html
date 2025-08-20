@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لعبة المافيا - تسجيل الدخول</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Cairo', sans-serif;
+    }
+    body {
+      background: linear-gradient(to right, #1e1e2f, #2b2b4c);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #2d2d44;
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+      width: 90%;
+      max-width: 400px;
+      text-align: center;
+      position: relative;
+    }
+    h1 {
+      margin-bottom: 20px;
+      font-size: 28px;
+      color: #ffcc00;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 10px;
+      background: #ffcc00;
+      color: #000;
+      font-weight: bold;
+      font-size: 16px;
+      cursor: pointer;
+      transition: 0.3s ease;
+    }
+    button:hover {
+      background: #e6b800;
+    }
+    .hidden {
+      display: none;
+    }
+    .toast {
+      position: absolute;
+      bottom: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #ff5555;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      animation: fadeInOut 3s forwards;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; bottom: -60px; }
+      10% { opacity: 1; bottom: -30px; }
+      90% { opacity: 1; bottom: -30px; }
+      100% { opacity: 0; bottom: -60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>لعبة المافيا</h1>
+
+    <div id="loginSection">
+      <input id="playerName" placeholder="اكتب اسمك" />
+      <button onclick="showCreateRoom()">إنشاء طاولة</button>
+      <button onclick="showJoinRoom()">انضم إلى طاولة</button>
+    </div>
+
+    <div id="createRoomSection" class="hidden">
+      <input id="mafiaCount" type="number" placeholder="عدد المافيا" />
+      <button onclick="createRoom()">إنشاء</button>
+      <button onclick="goBack()">رجوع</button>
+    </div>
+
+    <div id="joinRoomSection" class="hidden">
+      <input type="text" id="roomIdField" placeholder="رقم الطاولة (4 أرقام)" maxlength="4" inputmode="numeric" pattern="[0-9]*" />
+      <!-- <input type="number" id="roomIdField" placeholder="رقم الطاولة (4 أرقام)" maxlength="4" /> -->
+      
+      <button onclick="joinRoom()">دخول</button>
+      <button onclick="goBack()">رجوع</button>
+      <button onclick="refreshRooms()">تحديث الطاولات</button>
+      <div id="roomsList"></div>
+    </div>
+
+    <div id="toastContainer"></div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const roomIdField = document.getElementById('roomIdField');
+
+    roomIdField.addEventListener('input', function () {
+      const arabicNums = {
+        '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+        '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+        '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+        '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
+      };
+
+      this.value = this.value.replace(/[٠-٩۰-۹]/g, d => arabicNums[d]);
+    });
+    const socket = io();
+
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      document.getElementById('toastContainer').appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+    function refreshRooms() {
+      socket.emit('get-rooms-info');
+    }
+
+    socket.on('rooms-info', rooms => {
+      const list = document.getElementById('roomsList');
+      list.innerHTML = '';
+
+      // فقط الطاولات التي لم تبدأ بعد
+      const availableRooms = rooms.filter(room => !room.started);
+
+      if (availableRooms.length === 0) {
+        const msg = document.createElement('div');
+        msg.textContent = 'لا توجد طاولات متاحة حالياً.';
+        msg.style.marginTop = '10px';
+        list.appendChild(msg);
+        return;
+      }
+
+      availableRooms.forEach(room => {
+        const btn = document.createElement('button');
+        btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - في انتظار اللاعبين`;
+        btn.style.margin = '5px';
+        btn.onclick = () => {
+          document.getElementById('roomIdField').value = room.roomCode;
+        };
+        list.appendChild(btn);
+      });
+    });
+    function showCreateRoom() {
+      const name = document.getElementById('playerName').value.trim();
+      if (!name) {
+        showToast('يرجى إدخال اسمك أولاً');
+        return;
+      }
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('createRoomSection').classList.remove('hidden');
+    }
+
+    function showJoinRoom() {
+      const name = document.getElementById('playerName').value.trim();
+      if (!name) {
+        showToast('يرجى إدخال اسمك أولاً');
+        return;
+      }
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('joinRoomSection').classList.remove('hidden');
+      refreshRooms();
+    }
+
+    function goBack() {
+      document.getElementById('createRoomSection').classList.add('hidden');
+      document.getElementById('joinRoomSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.remove('hidden');
+    }
+
+    function createRoom() {
+      const name = document.getElementById('playerName').value.trim();
+      const mafiaCount = document.getElementById('mafiaCount').value.trim();
+      if (!name) {
+        showToast('يرجى إدخال اسمك');
+        return;
+      }
+      if (!mafiaCount || isNaN(mafiaCount) || Number(mafiaCount) <= 0) {
+        showToast('يرجى إدخال عدد المافيا بشكل صحيح');
+        return;
+      }
+
+      localStorage.setItem('playerName', name);
+      localStorage.setItem('mafiaCount', mafiaCount);
+      
+      const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+      document.cookie = `playerName=${name}`;
+      document.cookie = `mafiaCount=${mafiaCount}`;
+      document.cookie = `roomCode=${roomCode}`;
+      document.cookie = `isHost=true`;
+
+      socket.emit('create-room', { playerName: name, mafiaCount, roomCode });
+      window.location.href = 'host.html';
+    }
+
+    function joinRoom() {
+      const name = document.getElementById('playerName').value.trim();
+      const roomCode = document.getElementById('roomIdField').value.trim();
+      if (!name) {
+        showToast('يرجى إدخال اسمك');
+        return;
+      }
+      if (!roomCode || roomCode.length !== 4 || isNaN(roomCode)) {
+        showToast('يرجى إدخال رقم طاولة صحيح (4 أرقام)');
+        return;
+      }
+      document.cookie = `playerName=${name}`;
+      document.cookie = `roomCode=${roomCode}`;
+      document.cookie = `isHost=false`;
+
+      socket.emit('join-room', { playerName: name, roomCode });
+      window.location.href = 'player.html';
+    }
+    
+    const nameInput = document.getElementById('playerName');
+
+    // حفظ الاسم أثناء الكتابة
+    nameInput.addEventListener('input', function () {
+      localStorage.setItem('playerName', this.value);
+    });
+
+    // عند تحميل الصفحة: إذا فيه اسم محفوظ، اظهره تلقائياً
+    window.addEventListener('DOMContentLoaded', function () {
+      const savedName = localStorage.getItem('playerName');
+      if (savedName) {
+        document.getElementById('playerName').value = savedName;
+      }
+
+      const savedMafiaCount = localStorage.getItem('mafiaCount');
+      if (savedMafiaCount) {
+        document.getElementById('mafiaCount').value = savedMafiaCount;
+      }
+    });
+
+    // عند الضغط على أي زر: إعادة ملء الاسم في الحقل (احتياط)
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const savedName = localStorage.getItem('playerName');
+        if (savedName) {
+          nameInput.value = savedName;
+        }
+      });
+    });
+
+    
+  </script>
+</body>
+</html>
