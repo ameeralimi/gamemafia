@@ -484,7 +484,7 @@
         <button onclick="sendGift('😂')">😂 ضحك</button>
       </div>
     </div>
-    
+    <button id="joinBtn">انضم مع المايك 🎤</button>
     <div class="settings-box gifts">
       <div id="settings">
         <h3>⚙️ الإعدادات</h3>
@@ -495,7 +495,7 @@
         </div> -->
         <!-- <div class="voice-controls"> -->
           <!-- <button id="micButton" class="">🎤</button> -->
-          <button id="joinBtn">انضم مع المايك 🎤</button>
+          
         <!-- </div> -->
         <!-- عرض رسائل التصويت -->
         <div class="setting-item">
@@ -940,7 +940,7 @@
 
 
 
-    (function initVoiceUI() {
+(function initVoiceUI() {
   const container = document.querySelector('.container') || document.body;
 
   const wrap = document.createElement('div');
@@ -1062,6 +1062,7 @@ async function callPeer(peerId) {
   socket.emit('voice-offer', { roomCode, to: peerId, offer });
 }
 
+// عند الدخول للغرفة
 socket.emit('voice-join', { roomCode, playerName });
 
 socket.on('voice-peers', async ({ ids }) => {
@@ -1070,56 +1071,16 @@ socket.on('voice-peers', async ({ ids }) => {
   }
 });
 
-
-// طلب إذن المايك
-async function enableMic() {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log("🎤 مايكروفون شغال");
-
-    micBtn.textContent = "الميكروفون شغال ✅";
-  } catch (err) {
-    console.error("فشل الحصول على المايك:", err);
-    alert("لازم تسمح باستخدام الميكروفون!");
-  }
-}
-const joinBtn = document.getElementById("joinBtn");
-joinBtn.addEventListener("click", () => {
-  enableMic();
-  socket.emit("voice-join", { room: "mafia" });
-});
-
 // استقبال اتصال صوتي
 socket.on("voice-offer", async ({ from, offer }) => {
-  const pc = new RTCPeerConnection();
-  peers[from] = pc;
-
-  // بث صوتي للآخرين
-  if (localStream) {
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
-
-  // استقبال صوت الآخر
-  pc.ontrack = (event) => {
-    const audio = document.createElement("audio");
-    audio.srcObject = event.streams[0];
-    audio.autoplay = true;
-    document.body.appendChild(audio);
-  };
+  const pc = peers[from] || createPeerConnection(from);
 
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer();
+  const answer = await pc.createAnswer({ offerToReceiveAudio: true });
   await pc.setLocalDescription(answer);
 
-  socket.emit("voice-answer", { to: from, answer });
+  socket.emit("voice-answer", { roomCode, to: from, answer });
 });
-// socket.on('voice-offer', async ({ from, offer }) => {
-//   const pc = peers[from] || createPeerConnection(from);
-//   await pc.setRemoteDescription(new RTCSessionDescription(offer));
-//   const answer = await pc.createAnswer({ offerToReceiveAudio: true });
-//   await pc.setLocalDescription(answer);
-//   socket.emit('voice-answer', { roomCode, to: from, answer });
-// });
 
 socket.on('voice-answer', async ({ from, answer }) => {
   const pc = peers[from];
@@ -1139,6 +1100,7 @@ socket.on('voice-peer-left', ({ id }) => {
   removePeer(id);
 });
 
+// زر الميكروفون
 document.getElementById('micButton')?.addEventListener('click', async () => {
   if (!localStream) {
     try {
@@ -1159,11 +1121,13 @@ document.getElementById('micButton')?.addEventListener('click', async () => {
     }
   }
 
+  // إيقاف / تشغيل الميكروفون
   micOn = !micOn;
   localStream.getTracks().forEach(t => t.enabled = micOn);
   updateMicIcon();
 });
 
+// زر السماعة
 document.getElementById('speakerButton')?.addEventListener('click', () => {
   speakersOn = !speakersOn;
   updateSpeakerIcon();
@@ -1173,6 +1137,7 @@ document.getElementById('speakerButton')?.addEventListener('click', () => {
 updateMicIcon();
 updateSpeakerIcon();
 
+// إعادة الاتصال عند الرجوع للصفحة
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && socket && !socket.connected) {
     socket.connect();
