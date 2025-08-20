@@ -298,21 +298,42 @@ io.on('connection', (socket) => {
 
   // ===================== إشارات الصوت (WebRTC Signaling) =====================
   // انضمام قناة الصوت
-  socket.on('voice-join', ({ roomCode, playerName }) => {
-    if (!roomCode) return;
+   // ======= إشارات الصوت (WebRTC Signaling) =======
+  socket.on("voice-join", ({ roomCode, playerName }) => {
+    socket.join(roomCode);
+    socket.roomCode = roomCode;
+    socket.playerName = playerName;
 
-    // سجّل غرفة الصوت
-    if (!voiceRooms[roomCode]) voiceRooms[roomCode] = new Set();
-    voiceRooms[roomCode].add(socket.id);
-    socketToVoiceRoom[socket.id] = roomCode;
+    // أرسل للمستخدم قائمة الموجودين
+    const ids = [...(io.sockets.adapter.rooms.get(roomCode) || [])].filter(id => id !== socket.id);
+    socket.emit("voice-peers", { ids });
 
-    // أرسل للمنضم الجديد قائمة الموجودين (بدون نفسه)
-    const ids = [...voiceRooms[roomCode]].filter((id) => id !== socket.id);
-    socket.emit('voice-peers', { ids });
-
-    // (اختياري) ممكن تبلّغ البقية أن فيه مستخدم جديد - لكن الواجهة عندك تبدأ اتصال من جانب المنضم
-    console.log(`🎧 ${socket.id} انضم لغرفة الصوت ${roomCode}. Peers: ${ids.length}`);
+    // أبلغ الموجودين بوجود مستخدم جديد
+    socket.to(roomCode).emit("voice-peer-joined", { id: socket.id, name: playerName });
   });
+
+  socket.on("voice-offer", ({ roomCode, to, offer }) => {
+    io.to(to).emit("voice-offer", { from: socket.id, offer });
+  });
+
+  socket.on("voice-answer", ({ roomCode, to, answer }) => {
+    io.to(to).emit("voice-answer", { from: socket.id, answer });
+  });
+
+  socket.on("voice-ice", ({ roomCode, to, candidate }) => {
+    io.to(to).emit("voice-ice", { from: socket.id, candidate });
+  });
+
+  // socket.on("disconnect", () => {
+  //   if (socket.roomCode) {
+  //     io.to(socket.roomCode).emit("voice-peer-left", { id: socket.id });
+  //   }
+  //   console.log("❌ مستخدم غادر:", socket.id);
+  // });
+
+
+
+
 
   // ترك قناة الصوت (اختياري)
   socket.on('voice-leave', () => {
@@ -329,24 +350,10 @@ io.on('connection', (socket) => {
     delete socketToVoiceRoom[socket.id];
   });
 
-  // تمرير العرض/الجواب/المرشحات بين النظراء
-  socket.on('voice-offer', ({ roomCode, to, offer }) => {
-    if (to && offer) {
-      io.to(to).emit('voice-offer', { from: socket.id, offer });
-    }
-  });
 
-  socket.on('voice-answer', ({ roomCode, to, answer }) => {
-    if (to && answer) {
-      io.to(to).emit('voice-answer', { from: socket.id, answer });
-    }
-  });
+  
 
-  socket.on('voice-ice', ({ roomCode, to, candidate }) => {
-    if (to && candidate) {
-      io.to(to).emit('voice-ice', { from: socket.id, candidate });
-    }
-  });
+  
 
   // ------------- قطع الاتصال -------------
   socket.on('disconnect', () => {
@@ -361,6 +368,9 @@ io.on('connection', (socket) => {
       }
     }
 
+    if (socket.roomCode) {
+      io.to(socket.roomCode).emit("voice-peer-left", { id: socket.id });
+    }
     // إخراج من قناة الصوت وإبلاغ الأقران
     const roomCode = socketToVoiceRoom[socket.id];
     if (roomCode && voiceRooms[roomCode]) {
