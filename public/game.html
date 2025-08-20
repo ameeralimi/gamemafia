@@ -1002,13 +1002,14 @@ function createRemoteAudioEl(peerId) {
     audio = document.createElement('audio');
     audio.id = `voice-audio-${peerId}`;
     audio.autoplay = true;
-    audio.playsInline = true;
+    audio.playsInline = true; // مهم جدًا للجوال
     audio.muted = !speakersOn;
     document.body.appendChild(audio);
     peerAudioEls[peerId] = audio;
   }
   return audio;
 }
+
 
 function removePeer(peerId) {
   try {
@@ -1089,8 +1090,14 @@ socket.on('voice-answer', async ({ from, answer }) => {
   const pc = peers[from];
   if (pc && answer) {
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+    // أعد تشغيل الأصوات للتأكد
+    Object.values(peerAudioEls).forEach(a => {
+      if (speakersOn) a.play().catch(()=>{});
+    });
   }
 });
+
 
 socket.on('voice-ice', async ({ from, candidate }) => {
   const pc = peers[from];
@@ -1138,8 +1145,15 @@ document.getElementById('micButton')?.addEventListener('click', async () => {
 document.getElementById('speakerButton')?.addEventListener('click', () => {
   speakersOn = !speakersOn;
   updateSpeakerIcon();
-  setAllRemoteMuted(!speakersOn);
+
+  Object.values(peerAudioEls).forEach(a => {
+    a.muted = !speakersOn;
+    if (speakersOn) {
+      a.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
+    }
+  });
 });
+
 
 updateMicIcon();
 updateSpeakerIcon();
