@@ -914,13 +914,13 @@
 
   const micBtn = document.createElement('button');
   micBtn.id = 'micButton';
-  micBtn.textContent = '🎤'; // OFF افتراضيًا
+  micBtn.textContent = '🎤'; // افتراضياً مطفي
   micBtn.title = 'تشغيل/إيقاف الميكروفون';
   micBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
 
   const spkBtn = document.createElement('button');
   spkBtn.id = 'speakerButton';
-  spkBtn.textContent = '🔊'; // ON افتراضيًا
+  spkBtn.textContent = '🔊'; // افتراضياً شغال
   spkBtn.title = 'تشغيل/كتم السماعات';
   spkBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
 
@@ -932,25 +932,23 @@
   wrap.appendChild(spkBtn);
   wrap.appendChild(hint);
 
-  // ضع الأزرار أعلى قسم اللاعبين إن وُجد، وإلا فأضفها لأعلى الصفحة
   const anchor = document.querySelector('.players') || container.firstChild;
   container.insertBefore(wrap, anchor);
 })();
 
-// ========= المتغيرات العامة =========
+// ==================== المتغيرات ====================
 let localStream = null;        // بث المايك المحلي
 let micOn = false;             // حالة المايك
 let speakersOn = true;         // حالة السماعات
 const peers = {};              // socketId -> RTCPeerConnection
 const peerAudioEls = {};       // socketId -> <audio>
 
-// ملاحظة: نفترض أن socket / playerName / roomCode معرّفة سلفًا من سكربتك
+// يفترض أن المتغيرات socket / roomCode / playerName معرفة مسبقاً في سكربتك
 
-// ====== أدوات مساعدة ======
+// ==================== أدوات ====================
 function updateMicIcon() {
   const btn = document.getElementById('micButton');
   if (!btn) return;
-  // 🎤 = مطفأ | 🛑 = شغال (حددناها هكذا للوضوح)
   btn.textContent = micOn ? '🛑' : '🎤';
 }
 
@@ -992,33 +990,28 @@ function removePeer(peerId) {
   }
 }
 
-// ====== إنشاء اتصال WebRTC ======
+// ==================== إنشاء Peer ====================
 function createPeerConnection(peerId) {
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   });
 
-  // أضف بث المايك الحالي إن كان شغال
   if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   }
 
-  // مرشحّات ICE
   pc.onicecandidate = (e) => {
     if (e.candidate) {
       socket.emit('voice-ice', { roomCode, to: peerId, candidate: e.candidate });
     }
   };
 
-  // استقبال الصوت من الطرف الآخر
   pc.ontrack = (e) => {
     const audio = createRemoteAudioEl(peerId);
     audio.srcObject = e.streams[0];
-    // محاولة التشغيل (قد يحتاج تفاعل مستخدم، لكن وجود الضغط على زر كافٍ غالبًا)
     audio.play().catch(()=>{});
   };
 
-  // تنظيف عند قطع الاتصال
   pc.onconnectionstatechange = () => {
     if (['failed','disconnected','closed'].includes(pc.connectionState)) {
       removePeer(peerId);
@@ -1029,7 +1022,7 @@ function createPeerConnection(peerId) {
   return pc;
 }
 
-// ====== الاتصال بنظراء الغرفة ======
+// ==================== الاتصال ====================
 async function callPeer(peerId) {
   const pc = peers[peerId] || createPeerConnection(peerId);
   const offer = await pc.createOffer({ offerToReceiveAudio: true });
@@ -1037,18 +1030,15 @@ async function callPeer(peerId) {
   socket.emit('voice-offer', { roomCode, to: peerId, offer });
 }
 
-// ====== إشارات Socket.io للصوت (Signaling) ======
-// انضمام قناة الصوت (منفصلة منطقياً عن النص/اللعبة)
+// ==================== Socket.io ====================
 socket.emit('voice-join', { roomCode, playerName });
 
-// الخادم يرسل قائمة الموجوين لبدء الاتصال بهم
 socket.on('voice-peers', async ({ ids }) => {
   for (const id of ids) {
     if (!peers[id]) await callPeer(id);
   }
 });
 
-// استلام عرض (offer)
 socket.on('voice-offer', async ({ from, offer }) => {
   const pc = peers[from] || createPeerConnection(from);
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -1057,7 +1047,6 @@ socket.on('voice-offer', async ({ from, offer }) => {
   socket.emit('voice-answer', { roomCode, to: from, answer });
 });
 
-// استلام جواب (answer)
 socket.on('voice-answer', async ({ from, answer }) => {
   const pc = peers[from];
   if (pc && answer) {
@@ -1065,7 +1054,6 @@ socket.on('voice-answer', async ({ from, answer }) => {
   }
 });
 
-// تبادل مرشحات ICE
 socket.on('voice-ice', async ({ from, candidate }) => {
   const pc = peers[from];
   if (pc && candidate) {
@@ -1073,26 +1061,22 @@ socket.on('voice-ice', async ({ from, candidate }) => {
   }
 });
 
-// خروج نظير
 socket.on('voice-peer-left', ({ id }) => {
   removePeer(id);
 });
 
-// ====== أزرار التحكم ======
+// ==================== الأزرار ====================
 document.getElementById('micButton')?.addEventListener('click', async () => {
-  // أول تشغيل: نطلب الإذن وننشئ البث
   if (!localStream) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micOn = true;
 
-      // أضف المسارات لكل الاتصالات الحالية (إن وُجدت)
       Object.values(peers).forEach(pc => {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
       });
 
       updateMicIcon();
-      // محاولة تشغيل أي عناصر صوتية معلّقة
       Object.values(peerAudioEls).forEach(a => a.play().catch(()=>{}));
       return;
     } catch (err) {
@@ -1102,14 +1086,9 @@ document.getElementById('micButton')?.addEventListener('click', async () => {
     }
   }
 
-  // تبديل حالة المايك بدون إيقاف الاتصال: تفعيل/تعطيل المسارات
   micOn = !micOn;
   localStream.getTracks().forEach(t => t.enabled = micOn);
   updateMicIcon();
-
-  // إن أطفأت المايك تمامًا وتريد قطع المصدر:
-  // إن رغبت بقطع المايك فعليًا (توفير بطارية)، استعمل التالي بدل التعطيل:
-  // if (!micOn) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
 });
 
 document.getElementById('speakerButton')?.addEventListener('click', () => {
@@ -1118,17 +1097,17 @@ document.getElementById('speakerButton')?.addEventListener('click', () => {
   setAllRemoteMuted(!speakersOn);
 });
 
-// تهيئة الأيقونات عند التحميل
+// ==================== تهيئة ====================
 updateMicIcon();
 updateSpeakerIcon();
 
-// (اختياري) عند فقد الاتصال والعودة، أعد إرسال الانضمام الصوتي
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && socket && !socket.connected) {
     socket.connect();
     socket.emit('voice-join', { roomCode, playerName });
   }
 });
+
   </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
   <audio id="kickSound" src="sounds/kick.mp3"></audio>
