@@ -125,7 +125,9 @@
 
       this.value = this.value.replace(/[٠-٩۰-۹]/g, d => arabicNums[d]);
     });
-    const socket = io();
+    const socket = io("https://gamemafia.onrender.com", {
+      transports: ["websocket", "polling"]
+    });
 
     function showToast(message) {
       const toast = document.createElement('div');
