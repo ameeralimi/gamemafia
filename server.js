@@ -6,7 +6,10 @@ const cookieParser = require('cookie-parser');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  // فعّل CORS إذا احتجت (اختياري)
+  // cors: { origin: "*", methods: ["GET","POST"] }
+});
 
 io.use((socket, next) => {
   cookieParser()(socket.request, {}, next);
@@ -15,58 +18,73 @@ io.use((socket, next) => {
 app.use(express.static('public'));
 app.use(cookieParser());
 
-const rooms = {}; 
-// roomCode: { host, mafiaCount, players, started, votes, round, roles }
+// ===================== بيانات اللعبة =====================
+const rooms = {};
+// structure:
+// rooms[roomCode] = {
+//   host, mafiaCount, players: [{name,status,id}], started, votes, round, roles, kickedPlayers, showVoteMessages
+// }
 
+// ===================== قنوات الصوت (WebRTC Signaling) =====================
+// voiceRooms: roomCode => Set<socketId>
+const voiceRooms = new Map();
+// socketId => roomCode (لتنظيف سريع عند الخروج)
+const socketToVoiceRoom = new Map();
+
+function voiceJoin(socket, roomCode) {
+  if (!voiceRooms.has(roomCode)) voiceRooms.set(roomCode, new Set());
+  const set = voiceRooms.get(roomCode);
+  // أرسل للمستخدم الحالي IDs بقية المتواجدين ليبدأ هو الاتصال بهم
+  const peers = [...set].filter(id => id !== socket.id);
+  socket.emit('voice-peers', { ids: peers });
+
+  // أضف المستخدم للقائمة
+  set.add(socket.id);
+  socketToVoiceRoom.set(socket.id, roomCode);
+}
+
+function voiceLeave(socket) {
+  const roomCode = socketToVoiceRoom.get(socket.id);
+  if (!roomCode) return;
+  const set = voiceRooms.get(roomCode);
+  if (set) {
+    set.delete(socket.id);
+    // أخبر بقية الموجودين أن هذا النظير خرج
+    socket.to([...set]).emit('voice-peer-left', { id: socket.id });
+    if (set.size === 0) voiceRooms.delete(roomCode);
+  }
+  socketToVoiceRoom.delete(socket.id);
+}
+
+// ===================== Socket.IO =====================
 io.on('connection', (socket) => {
-  console.log('🔌 مستخدم جديد متصل');
+  console.log('🔌 مستخدم جديد متصل', socket.id);
 
+  // ===================== لعبة المافيا (كما هي + تحسينات طفيفة) =====================
   socket.on('create-room', ({ playerName, mafiaCount, roomCode }) => {
-      socket.join(roomCode);
+    socket.join(roomCode);
 
-      // إذا لم تكن الغرفة موجودة، قم بإنشائها مع بياناتها
-      if (!rooms[roomCode]) {
-          rooms[roomCode] = {
-              host: null,  // لا يوجد رئيسي مبدئيًا
-              mafiaCount,
-              players: [],
-              started: false,
-              votes: {},
-              round: 1,
-              roles: {},
-              kickedPlayers: [],
-              showVoteMessages: true // ✅ هذا هو السطر المضاف
-          };
-      }
+    if (!rooms[roomCode]) {
+      rooms[roomCode] = {
+        host: null,
+        mafiaCount,
+        players: [],
+        started: false,
+        votes: {},
+        round: 1,
+        roles: {},
+        kickedPlayers: [],
+        showVoteMessages: true
+      };
+    }
 
-      // إذا لم يكن هناك رئيسي، يتم تعيين اللاعب الحالي كـ رئيسي
-      if (!rooms[roomCode].host) {
-          rooms[roomCode].host = playerName;
-      }
+    if (!rooms[roomCode].host) {
+      rooms[roomCode].host = playerName;
+    }
 
-      // إضافة اللاعب إلى قائمة اللاعبين
-      rooms[roomCode].players.push({ name: playerName, status: 'online', id: socket.id });
+    rooms[roomCode].players.push({ name: playerName, status: 'online', id: socket.id });
 
-      // إرسال التحديث لجميع اللاعبين في الغرفة
-      io.to(roomCode).emit('update-players', rooms[roomCode].players);
-  });
-
-
-  // خاص بالمايك والسماعة
-  socket.on("offer", async ({ from, offer }) => {
-    const peer = createPeerConnection(from);
-    await peer.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-    socket.emit("answer", { to: from, answer });
-  });
-  socket.on("answer", async ({ from, answer }) => {
-    const peer = peers[from];
-    await peer.setRemoteDescription(new RTCSessionDescription(answer));
-  });
-  socket.on("ice-candidate", ({ from, candidate }) => {
-    const peer = peers[from];
-    if (peer) peer.addIceCandidate(new RTCIceCandidate(candidate));
+    io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
 
   socket.on('join-room', ({ playerName, roomCode }) => {
@@ -116,7 +134,7 @@ io.on('connection', (socket) => {
     room.roles = {};
     room.round = 1;
 
-    // ✅ دالة خلط عشوائي قوية (Fisher-Yates)
+    // خلط Fisher-Yates
     function shuffle(array) {
       for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -125,26 +143,20 @@ io.on('connection', (socket) => {
       return array;
     }
 
-    // 🔁 نأخذ نسخة من اللاعبين ونخلطها
     const playersCopy = [...room.players];
-    const shuffled = shuffle(playersCopy); // خلط كامل
-
-    // 👤 اختيار المافيا بناءً على العدد المطلوب فقط من اللاعبين المخلوطين
+    const shuffled = shuffle(playersCopy);
     const mafiaPlayers = shuffled.slice(0, room.mafiaCount);
 
-    // 🟥 تعيين دور المافيا
     mafiaPlayers.forEach(player => {
       room.roles[player.name] = 'mafia';
     });
 
-    // 🟦 تعيين البقية كمواطنين
     shuffled.forEach(player => {
       if (!room.roles[player.name]) {
         room.roles[player.name] = 'citizen';
       }
     });
 
-    // 🎮 إرسال الدور لكل لاعب
     room.players.forEach(player => {
       io.to(player.id).emit('game-started', {
         role: room.roles[player.name],
@@ -153,8 +165,6 @@ io.on('connection', (socket) => {
       });
     });
 
-
-    // 📣 إذا أكثر من مافيا، يعرفوا بعضهم
     if (room.mafiaCount > 1) {
       const mafiaNames = mafiaPlayers.map(p => p.name);
       mafiaPlayers.forEach(player => {
@@ -166,7 +176,6 @@ io.on('connection', (socket) => {
   socket.on('set-vote-messages-visibility', ({ roomCode, show }) => {
     const room = rooms[roomCode];
     if (!room) return;
-
     room.showVoteMessages = show;
   });
 
@@ -180,11 +189,10 @@ io.on('connection', (socket) => {
   socket.on('vote-player', ({ roomCode, playerName, target }) => {
     const room = rooms[roomCode];
     if (!room) return;
-    if (room.kickedPlayers.includes(playerName)) return; // لا يمكن للمطرود التصويت
+    if (room.kickedPlayers.includes(playerName)) return;
 
     room.votes[playerName] = target;
 
-    // 🟨 إرسال رسالة إلى الدردشة عند التصويت
     if (room.showVoteMessages) {
       io.to(roomCode).emit('chat-message', {
         playerName: playerName,
@@ -192,20 +200,17 @@ io.on('connection', (socket) => {
       });
     }
 
-    // 🟧 عد عدد الأصوات لكل لاعب
     const voteCount = {};
     Object.values(room.votes).forEach(v => {
       voteCount[v] = (voteCount[v] || 0) + 1;
     });
 
-    // 🟦 إرسال عدد الأصوات لكل لاعب
     const result = room.players.map(p => ({
       playerName: p.name,
       count: voteCount[p.name] || 0
     }));
     io.to(roomCode).emit('vote-result', result);
 
-    // 🟨 🆕 إرسال عدد المصوتين وعدد اللاعبين
     const votedCount = Object.keys(room.votes).length;
     const totalPlayers = room.players.filter(p => !room.kickedPlayers.includes(p.name)).length;
     io.to(roomCode).emit('update-vote-count', {
@@ -214,8 +219,6 @@ io.on('connection', (socket) => {
     });
   });
 
-
-
   function getPlayerNameFromSocket(socket, roomCode) {
     const room = rooms[roomCode];
     if (!room) return null;
@@ -223,19 +226,17 @@ io.on('connection', (socket) => {
     return player ? player.name : null;
   }
 
-
   socket.on('transfer-host', ({ roomCode, newHost }) => {
     const room = rooms[roomCode];
     if (!room) return;
 
     const currentHost = getPlayerNameFromSocket(socket, roomCode);
-    if (currentHost !== room.host) return; // فقط المضيف يستطيع النقل
+    if (currentHost !== room.host) return;
 
     room.host = newHost;
-
     io.to(roomCode).emit('host-transferred', { newHost });
 
-    const targetSocket = Object.values(io.sockets.sockets).find(
+    const targetSocket = Array.from(io.sockets.sockets.values()).find(
       s => getPlayerNameFromSocket(s, roomCode) === newHost
     );
     if (targetSocket) {
@@ -292,7 +293,37 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ===================== إشارات الصوت (WebRTC) بأسماء تطابق الواجهة =====================
+  socket.on('voice-join', ({ roomCode, playerName }) => {
+    // الانضمام المنطقي لقناة الصوت (لا يحتاج join() خاص، نستخدم هياكلنا)
+    voiceJoin(socket, roomCode);
+  });
+
+  // إعادة قائمة الأقران عند الطلب (اختياري)
+  socket.on('voice-get-peers', ({ roomCode }) => {
+    const set = voiceRooms.get(roomCode) || new Set();
+    socket.emit('voice-peers', { ids: [...set].filter(id => id !== socket.id) });
+  });
+
+  socket.on('voice-offer', ({ roomCode, to, offer }) => {
+    // إعادة توجيه العرض للطرف المقصود
+    io.to(to).emit('voice-offer', { from: socket.id, offer });
+  });
+
+  socket.on('voice-answer', ({ roomCode, to, answer }) => {
+    io.to(to).emit('voice-answer', { from: socket.id, answer });
+  });
+
+  socket.on('voice-ice', ({ roomCode, to, candidate }) => {
+    io.to(to).emit('voice-ice', { from: socket.id, candidate });
+  });
+
+  // ===================== قطع الاتصال =====================
   socket.on('disconnect', () => {
+    // تنظيف الصوت أولاً
+    voiceLeave(socket);
+
+    // تحديث حالة اللاعب في غرف اللعبة
     for (const code in rooms) {
       const room = rooms[code];
       const player = room.players.find(p => p.id === socket.id);
@@ -305,5 +336,6 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3000;
+// ================ التشغيل ================
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 الخادم يعمل على http://localhost:${PORT}`));
