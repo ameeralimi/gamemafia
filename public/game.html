@@ -1042,7 +1042,10 @@ function createPeerConnection(peerId) {
   pc.ontrack = (e) => {
     const audio = createRemoteAudioEl(peerId);
     audio.srcObject = e.streams[0];
-    audio.play().catch(()=>{});
+    audio.autoplay = true;
+    audio.playsInline = true;  // مهم للموبايل
+    audio.muted = !speakersOn; 
+    audio.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
   };
 
   pc.onconnectionstatechange = () => {
@@ -1102,30 +1105,34 @@ socket.on('voice-peer-left', ({ id }) => {
 
 // زر الميكروفون
 document.getElementById('micButton')?.addEventListener('click', async () => {
-  if (!localStream) {
-    try {
+  try {
+    if (!localStream) {
+      // طلب إذن المايك أول مرة
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micOn = true;
 
+      // أضف الصوت لكل اتصال مفتوح
       Object.values(peers).forEach(pc => {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+          track.enabled = true; // تأكد انه شغال
+        });
       });
 
-      updateMicIcon();
-      Object.values(peerAudioEls).forEach(a => a.play().catch(()=>{}));
-      return;
-    } catch (err) {
-      console.error('فشل الحصول على الميكروفون:', err);
-      alert('يرجى السماح باستخدام الميكروفون من إعدادات المتصفح ثم المحاولة مرة أخرى.');
-      return;
+      console.log("🎤 الميكروفون اشتغل على الهاتف/الكمبيوتر");
+    } else {
+      // تشغيل/إيقاف المايك
+      micOn = !micOn;
+      localStream.getTracks().forEach(track => track.enabled = micOn);
     }
-  }
 
-  // إيقاف / تشغيل الميكروفون
-  micOn = !micOn;
-  localStream.getTracks().forEach(t => t.enabled = micOn);
-  updateMicIcon();
+    updateMicIcon();
+  } catch (err) {
+    console.error('فشل تشغيل الميكروفون:', err);
+    alert('تأكد أنك سمحت للمتصفح بالوصول للمايكروفون.');
+  }
 });
+
 
 // زر السماعة
 document.getElementById('speakerButton')?.addEventListener('click', () => {
