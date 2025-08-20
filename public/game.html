@@ -541,7 +541,11 @@
     function goToHome() {
       window.location.href = 'index.html';
     }
-    const socket = io();
+    const socket = io("https://gamemafia.onrender.com", {
+      transports: ["websocket", "polling"]
+    });
+
+
     const playerName = getCookie('playerName');
     const roomCode = getCookie('roomCode');
     const isHost = getCookie('isHost') === 'true';  // هل اللاعب هو الذي أنشأ الطاولة
@@ -929,6 +933,8 @@
 
 
 
+
+
     (function initVoiceUI() {
   const container = document.querySelector('.container') || document.body;
 
@@ -1059,13 +1065,56 @@ socket.on('voice-peers', async ({ ids }) => {
   }
 });
 
-socket.on('voice-offer', async ({ from, offer }) => {
-  const pc = peers[from] || createPeerConnection(from);
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer({ offerToReceiveAudio: true });
-  await pc.setLocalDescription(answer);
-  socket.emit('voice-answer', { roomCode, to: from, answer });
+
+// طلب إذن المايك
+async function enableMic() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    console.log("🎤 مايكروفون شغال");
+
+    micBtn.textContent = "الميكروفون شغال ✅";
+  } catch (err) {
+    console.error("فشل الحصول على المايك:", err);
+    alert("لازم تسمح باستخدام الميكروفون!");
+  }
+}
+
+joinBtn.addEventListener("click", () => {
+  enableMic();
+  socket.emit("voice-join", { room: "mafia" });
 });
+
+// استقبال اتصال صوتي
+socket.on("voice-offer", async ({ from, offer }) => {
+  const pc = new RTCPeerConnection();
+  peers[from] = pc;
+
+  // بث صوتي للآخرين
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  // استقبال صوت الآخر
+  pc.ontrack = (event) => {
+    const audio = document.createElement("audio");
+    audio.srcObject = event.streams[0];
+    audio.autoplay = true;
+    document.body.appendChild(audio);
+  };
+
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  socket.emit("voice-answer", { to: from, answer });
+});
+// socket.on('voice-offer', async ({ from, offer }) => {
+//   const pc = peers[from] || createPeerConnection(from);
+//   await pc.setRemoteDescription(new RTCSessionDescription(offer));
+//   const answer = await pc.createAnswer({ offerToReceiveAudio: true });
+//   await pc.setLocalDescription(answer);
+//   socket.emit('voice-answer', { roomCode, to: from, answer });
+// });
 
 socket.on('voice-answer', async ({ from, answer }) => {
   const pc = peers[from];
