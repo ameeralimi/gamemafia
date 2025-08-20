@@ -942,7 +942,7 @@
 
   const micBtn = document.createElement('button');
   micBtn.id = 'micButton';
-  micBtn.textContent = '🛑'; 
+  micBtn.textContent = '🎤'; 
   micBtn.title = 'تشغيل/إيقاف الميكروفون';
   micBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
 
@@ -991,7 +991,7 @@ window.addEventListener("load", initMic);
 function updateMicIcon() {
   const btn = document.getElementById('micButton');
   if (!btn) return;
-  btn.textContent = micOn ? '🎤' : '🛑';
+  btn.textContent = micOn ? '🛑' : '🎤';
 }
 
 function updateSpeakerIcon() {
