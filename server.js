@@ -254,10 +254,20 @@ io.on('connection', (socket) => {
   socket.on('vote-player', ({ roomCode, playerName, target }) => {
     const room = rooms[roomCode];
     if (!room) return;
-    if (room.kickedPlayers.includes(playerName)) return; // المطرود لا يصوّت
 
+    // 🔒 الحصول على بيانات المصوّت
+    const voter = room.players.find(p => p.name === playerName);
+
+    // 🛑 إذا اللاعب غير موجود أو مشاهد أو مقصي → رجّع
+    if (!voter || voter.spectator || room.kickedPlayers.includes(playerName)) {
+      console.log(`🚫 اللاعب ${playerName} حاول التصويت وهو غير مسموح`);
+      return;
+    }
+
+    // ✅ تسجيل التصويت
     room.votes[playerName] = target;
 
+    // 💬 رسالة في الشات
     if (room.showVoteMessages) {
       io.to(roomCode).emit('chat-message', {
         playerName: playerName,
@@ -265,21 +275,26 @@ io.on('connection', (socket) => {
       });
     }
 
+    // 🗳️ حساب الأصوات
     const voteCount = {};
     Object.values(room.votes).forEach((v) => {
       voteCount[v] = (voteCount[v] || 0) + 1;
     });
 
+    // تحديث النتائج لكل لاعب
     const result = room.players.map((p) => ({
       playerName: p.name,
       count: voteCount[p.name] || 0
     }));
     io.to(roomCode).emit('vote-result', result);
 
+    // تحديث عدد المصوتين
     const votedCount = Object.keys(room.votes).length;
-    const totalPlayers = room.players.filter((p) => !room.kickedPlayers.includes(p.name)).length;
+    const totalPlayers = room.players.filter(p => !p.spectator && !room.kickedPlayers.includes(p.name)).length;
+
     io.to(roomCode).emit('update-vote-count', { votedCount, totalPlayers });
   });
+
 
   // ------------- إنهاء جولة بإقصاء الأكثر تصويتاً -------------
   socket.on('kick-voted-player', ({ roomCode }) => {
