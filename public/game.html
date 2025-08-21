@@ -1059,7 +1059,16 @@ async function callPeer(peerId) {
 }
 
 // ====== أحداث السيرفر ======
-socket.emit("voice-join", { roomCode, playerName });
+socket.on('voice-join', ({ roomCode }) => {
+  if (!voiceRooms[roomCode]) voiceRooms[roomCode] = new Set();
+  voiceRooms[roomCode].add(socket.id);
+  socketToVoiceRoom[socket.id] = roomCode;
+
+  const peers = Array.from(voiceRooms[roomCode]).filter(id => id !== socket.id);
+  io.to(socket.id).emit('voice-peers', { ids: peers });
+
+  socket.to(roomCode).emit('voice-peer-joined', { id: socket.id });
+});
 
 // استقبل قائمة الموجودين
 socket.on('voice-peers', async ({ ids }) => {
