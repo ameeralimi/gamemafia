@@ -868,10 +868,15 @@
 
     function checkAutoExclusion() {
       const autoExclusion = document.getElementById('Automatic_exclusion').checked;
+      if (!autoExclusion) {
+        // إذا مش مفعل، لا تسوي شي
+        return;
+      }
+
       const totalPlayers = parseInt(document.getElementById('totalPlayers').textContent, 10);
       const voteStatus = parseInt(document.getElementById('voteStatus').textContent, 10);
 
-      if (autoExclusion && totalPlayers > 0 && voteStatus === totalPlayers) {
+      if (totalPlayers > 0 && voteStatus === totalPlayers) {
         kickVotedPlayer();
       }
     }
