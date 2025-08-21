@@ -301,15 +301,15 @@ io.on('connection', (socket) => {
    // ======= إشارات الصوت (WebRTC Signaling) =======
   socket.on("voice-join", ({ roomCode, playerName }) => {
     socket.join(roomCode);
-    socket.roomCode = roomCode;
-    socket.playerName = playerName;
 
-    // أرسل للمستخدم قائمة الموجودين
-    const ids = [...(io.sockets.adapter.rooms.get(roomCode) || [])].filter(id => id !== socket.id);
-    socket.emit("voice-peers", { ids });
+    if (!voiceRooms.has(roomCode)) voiceRooms.set(roomCode, new Set());
+    voiceRooms.get(roomCode).add(socket.id);
 
-    // أبلغ الموجودين بوجود مستخدم جديد
-    socket.to(roomCode).emit("voice-peer-joined", { id: socket.id, name: playerName });
+    // أرسل للقادم كل الموجودين
+    socket.emit("voice-peers", { ids: [...voiceRooms.get(roomCode)] });
+
+    // أرسل للبقية إعادة بناء اتصالات (مو بس مع الجديد، مع الكل)
+    socket.to(roomCode).emit("voice-reconnect", { ids: [...voiceRooms.get(roomCode)] });
   });
 
   socket.on("voice-offer", ({ roomCode, to, offer }) => {
