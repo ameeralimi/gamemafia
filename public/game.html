@@ -540,12 +540,262 @@
       transports: ["websocket", "polling"]
     });
 
-
     const playerName = getCookie('playerName');
     const roomCode = getCookie('roomCode');
-    const isHost = getCookie('isHost') === 'true';  // هل اللاعب هو الذي أنشأ الطاولة
+    const isHost = getCookie('isHost') === 'true';
     let playersVoted = new Set();
-    let eliminatedPlayers = new Set(); // لتتبع اللاعبين الذين تم إقصاؤهم
+    let eliminatedPlayers = new Set(); 
+
+
+
+
+
+
+    // إعدادات الماكرفون
+
+(function initVoiceUI() {
+  const container = document.querySelector('.container') || document.body;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'voice-controls';
+  wrap.style.cssText = `
+    display:flex; gap:8px; align-items:center; margin:12px 0;
+    padding:8px; border:1px solid #eee; border-radius:12px;
+  `;
+
+  const micBtn = document.createElement('button');
+  micBtn.id = 'micButton';
+  micBtn.textContent = '🎤'; 
+  micBtn.title = 'تشغيل/إيقاف الميكروفون';
+  micBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
+
+  const spkBtn = document.createElement('button');
+  spkBtn.id = 'speakerButton';
+  spkBtn.textContent = '🔊'; 
+  spkBtn.title = 'تشغيل/كتم السماعات';
+  spkBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
+
+  const hint = document.createElement('span');
+  hint.textContent = 'المحادثة الصوتية';
+  hint.style.cssText = 'opacity:.8; font-size:14px; margin-inline-start:6px;';
+
+  wrap.appendChild(micBtn);
+  wrap.appendChild(spkBtn);
+  wrap.appendChild(hint);
+
+  const anchor = document.querySelector('.players') || container.firstChild;
+  container.insertBefore(wrap, anchor);
+})();
+
+let localStream = null;        
+let micOn = false;             
+let speakersOn = true;         
+const peers = {};              
+const peerAudioEls = {};       
+
+async function initMic() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    console.log("🎤 مايكروفون جاهز");
+
+    Object.values(peers).forEach(pc => {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    });
+  } catch (err) {
+    console.error("فشل الحصول على المايك:", err);
+    alert("لازم تسمح للمتصفح باستخدام الميكروفون!");
+  }
+}
+window.addEventListener("load", initMic);
+
+function updateMicIcon() {
+  const btn = document.getElementById('micButton');
+  if (!btn) return;
+  btn.textContent = micOn ? '🛑' : '🎤';
+}
+function updateSpeakerIcon() {
+  const btn = document.getElementById('speakerButton');
+  if (!btn) return;
+  btn.textContent = speakersOn ? '🔊' : '🔇';
+}
+function setAllRemoteMuted(muted) {
+  Object.values(peerAudioEls).forEach(a => { a.muted = muted; });
+}
+function createRemoteAudioEl(peerId) {
+  let audio = peerAudioEls[peerId];
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.id = `voice-audio-${peerId}`;
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.muted = !speakersOn;
+    document.body.appendChild(audio);
+    peerAudioEls[peerId] = audio;
+  }
+  return audio;
+}
+function removePeer(peerId) {
+  try {
+    peers[peerId]?.getSenders?.().forEach(s => s.track && s.track.stop && s.track.stop());
+    peers[peerId]?.close?.();
+  } catch {}
+  delete peers[peerId];
+  if (peerAudioEls[peerId]) {
+    peerAudioEls[peerId].srcObject = null;
+    peerAudioEls[peerId].remove();
+    delete peerAudioEls[peerId];
+  }
+}
+function createPeerConnection(peerId) {
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  pc.ontrack = (e) => {
+    const audio = createRemoteAudioEl(peerId);
+    audio.srcObject = e.streams[0];
+  };
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      socket.emit("voice-ice", { roomCode, to: peerId, candidate: e.candidate });
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+      removePeer(peerId);
+    }
+  };
+
+  peers[peerId] = pc;
+  return pc;
+}
+async function callPeer(peerId) {
+  const pc = peers[peerId] || createPeerConnection(peerId);
+  const offer = await pc.createOffer({ offerToReceiveAudio: true });
+  await pc.setLocalDescription(offer);
+  socket.emit('voice-offer', { roomCode, to: peerId, offer });
+}
+
+// ====== أحداث السيرفر ======
+socket.emit("voice-join", { roomCode, playerName });
+
+// استقبل قائمة الموجودين
+socket.on('voice-peers', async ({ ids }) => {
+  for (const id of ids) {
+    if (!peers[id]) await callPeer(id);
+  }
+});
+
+// لاعب جديد انضم
+socket.on("voice-peer-joined", ({ id }) => {
+  console.log("🎤 لاعب جديد:", id);
+  callPeer(id);
+});
+
+// استقبل عرض (offer)
+socket.on("voice-offer", async ({ from, offer }) => {
+  const pc = peers[from] || createPeerConnection(from);
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer({ offerToReceiveAudio: true });
+  await pc.setLocalDescription(answer);
+  socket.emit("voice-answer", { roomCode, to: from, answer });
+});
+
+// استقبل جواب (answer)
+socket.on('voice-answer', async ({ from, answer }) => {
+  const pc = peers[from];
+  if (pc && answer) {
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    Object.values(peerAudioEls).forEach(a => {
+      if (speakersOn) a.play().catch(()=>{});
+    });
+  }
+});
+
+// استقبل ICE
+socket.on('voice-ice', async ({ from, candidate }) => {
+  const pc = peers[from];
+  if (pc && candidate) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+  }
+});
+
+// لاعب خرج
+socket.on('voice-peer-left', ({ id }) => {
+  removePeer(id);
+});
+
+// ====== أزرار ======
+document.getElementById('micButton')?.addEventListener('click', async () => {
+  try {
+    if (!localStream) {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micOn = true;
+      Object.values(peers).forEach(pc => {
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+          track.enabled = true;
+        });
+      });
+    } else {
+      micOn = !micOn;
+      localStream.getTracks().forEach(track => track.enabled = micOn);
+    }
+    updateMicIcon();
+  } catch (err) {
+    console.error('فشل تشغيل الميكروفون:', err);
+    alert('تأكد أنك سمحت للمتصفح بالوصول للمايكروفون.');
+  }
+});
+document.getElementById('speakerButton')?.addEventListener('click', () => {
+  speakersOn = !speakersOn;
+  updateSpeakerIcon();
+  Object.values(peerAudioEls).forEach(a => {
+    a.muted = !speakersOn;
+    if (speakersOn) {
+      a.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
+    }
+  });
+});
+updateMicIcon();
+updateSpeakerIcon();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && socket && !socket.connected) {
+    socket.connect();
+    socket.emit('voice-join', { roomCode, playerName });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     document.getElementById('tableCodeDisplay').textContent = roomCode;
     document.getElementById('roundNum').textContent = getCookie('round') || '1';
@@ -930,265 +1180,6 @@
 
 
 
-(function initVoiceUI() {
-  const container = document.querySelector('.container') || document.body;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'voice-controls';
-  wrap.style.cssText = `
-    display:flex; gap:8px; align-items:center; margin:12px 0;
-    padding:8px; border:1px solid #eee; border-radius:12px;
-  `;
-
-  const micBtn = document.createElement('button');
-  micBtn.id = 'micButton';
-  micBtn.textContent = '🎤'; 
-  micBtn.title = 'تشغيل/إيقاف الميكروفون';
-  micBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
-
-  const spkBtn = document.createElement('button');
-  spkBtn.id = 'speakerButton';
-  spkBtn.textContent = '🔊'; 
-  spkBtn.title = 'تشغيل/كتم السماعات';
-  spkBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
-
-  const hint = document.createElement('span');
-  hint.textContent = 'المحادثة الصوتية';
-  hint.style.cssText = 'opacity:.8; font-size:14px; margin-inline-start:6px;';
-
-  wrap.appendChild(micBtn);
-  wrap.appendChild(spkBtn);
-  wrap.appendChild(hint);
-
-  const anchor = document.querySelector('.players') || container.firstChild;
-  container.insertBefore(wrap, anchor);
-})();
-
-let localStream = null;        
-let micOn = false;             
-let speakersOn = true;         
-const peers = {};              
-const peerAudioEls = {};       
-
-async function initMic() {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log("مايكروفون شغال مباشرة عند فتح الصفحة");
-
-    // اربط الـ stream بكل peer جديد
-    Object.values(peers).forEach(pc => {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    });
-  } catch (err) {
-    console.error("فشل الحصول على المايك:", err);
-    alert("لازم تسمح للمتصفح باستخدام الميكروفون!");
-  }
-}
-
-// استدعاء مباشرة عند تحميل الصفحة
-window.addEventListener("load", initMic);
-
-function updateMicIcon() {
-  const btn = document.getElementById('micButton');
-  if (!btn) return;
-  btn.textContent = micOn ? '🎤' : '🛑';
-}
-
-function updateSpeakerIcon() {
-  const btn = document.getElementById('speakerButton');
-  if (!btn) return;
-  btn.textContent = speakersOn ? '🔊' : '🔇';
-}
-
-function setAllRemoteMuted(muted) {
-  Object.values(peerAudioEls).forEach(a => { a.muted = muted; });
-}
-
-function createRemoteAudioEl(peerId) {
-  let audio = peerAudioEls[peerId];
-  if (!audio) {
-    audio = document.createElement('audio');
-    audio.id = `voice-audio-${peerId}`;
-    audio.autoplay = true;
-    audio.playsInline = true; // مهم جدًا للجوال
-    audio.muted = !speakersOn;
-    document.body.appendChild(audio);
-    peerAudioEls[peerId] = audio;
-  }
-  return audio;
-}
-
-
-
-
-function removePeer(peerId) {
-  try {
-    peers[peerId]?.getSenders?.().forEach(s => s.track && s.track.stop && s.track.stop());
-    peers[peerId]?.close?.();
-  } catch {}
-  delete peers[peerId];
-
-  if (peerAudioEls[peerId]) {
-    peerAudioEls[peerId].srcObject = null;
-    peerAudioEls[peerId].remove();
-    delete peerAudioEls[peerId];
-  }
-}
-
-function createPeerConnection(peerId) {
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  });
-
-  // نضيف المايك فقط إذا كان شغال مسبقاً
-  if (localStream) {
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
-
-  pc.ontrack = (e) => {
-    const audio = createRemoteAudioEl(peerId);
-    audio.srcObject = e.streams[0];
-  };
-
-  pc.onicecandidate = (e) => {
-    if (e.candidate) {
-      socket.emit("voice-ice", { roomCode, to: peerId, candidate: e.candidate });
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
-      removePeer(peerId);
-    }
-  };
-
-  peers[peerId] = pc;
-  return pc;
-}
-
-
-async function callPeer(peerId) {
-  const pc = peers[peerId] || createPeerConnection(peerId);
-  const offer = await pc.createOffer({ offerToReceiveAudio: true });
-  await pc.setLocalDescription(offer);
-  socket.emit('voice-offer', { roomCode, to: peerId, offer });
-}
-
-// عند الدخول للغرفة
-// لما تنضم للغرفة
-socket.emit("voice-join", { roomCode: "mafia", playerName: playerName });
-
-// السيرفر يرجع لك قائمة الموجودين
-socket.on("voice-peers", ({ ids }) => {
-  ids.forEach(peerId => {
-    callPeer(peerId); // أنشئ اتصال مع الموجودين
-  });
-});
-
-// لما يدخل لاعب جديد
-socket.on("voice-peer-joined", ({ id, name }) => {
-  console.log("🎤 لاعب جديد دخل:", name || id);
-  callPeer(id); // أرسل له الصوت
-});
-
-// socket.emit('voice-join', { roomCode, playerName });
-
-// socket.on('voice-peers', async ({ ids }) => {
-//   for (const id of ids) {
-//     if (!peers[id]) await callPeer(id);
-//   }
-// });
-
-// استقبال اتصال صوتي
-socket.on("voice-offer", async ({ from, offer }) => {
-  const pc = peers[from] || createPeerConnection(from);
-
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await pc.createAnswer({ offerToReceiveAudio: true });
-  await pc.setLocalDescription(answer);
-
-  socket.emit("voice-answer", { roomCode, to: from, answer });
-});
-
-socket.on('voice-answer', async ({ from, answer }) => {
-  const pc = peers[from];
-  if (pc && answer) {
-    await pc.setRemoteDescription(new RTCSessionDescription(answer));
-
-    // أعد تشغيل الأصوات للتأكد
-    Object.values(peerAudioEls).forEach(a => {
-      if (speakersOn) a.play().catch(()=>{});
-    });
-  }
-});
-
-
-socket.on('voice-ice', async ({ from, candidate }) => {
-  const pc = peers[from];
-  if (pc && candidate) {
-    try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
-  }
-});
-
-socket.on('voice-peer-left', ({ id }) => {
-  removePeer(id);
-});
-
-// زر الميكروفون
-document.getElementById('micButton')?.addEventListener('click', async () => {
-  try {
-    if (!localStream) {
-      // طلب إذن المايك أول مرة
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micOn = true;
-
-      // أضف الصوت لكل اتصال مفتوح
-      Object.values(peers).forEach(pc => {
-        localStream.getTracks().forEach(track => {
-          pc.addTrack(track, localStream);
-          track.enabled = true; // تأكد انه شغال
-        });
-      });
-
-      console.log("الميكروفون اشتغل على الهاتف/الكمبيوتر");
-    } else {
-      // تشغيل/إيقاف المايك
-      micOn = !micOn;
-      localStream.getTracks().forEach(track => track.enabled = micOn);
-    }
-
-    updateMicIcon();
-  } catch (err) {
-    console.error('فشل تشغيل الميكروفون:', err);
-    alert('تأكد أنك سمحت للمتصفح بالوصول للمايكروفون.');
-  }
-});
-
-
-// زر السماعة
-document.getElementById('speakerButton')?.addEventListener('click', () => {
-  speakersOn = !speakersOn;
-  updateSpeakerIcon();
-
-  Object.values(peerAudioEls).forEach(a => {
-    a.muted = !speakersOn;
-    if (speakersOn) {
-      a.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
-    }
-  });
-});
-
-
-updateMicIcon();
-updateSpeakerIcon();
-
-// إعادة الاتصال عند الرجوع للصفحة
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && socket && !socket.connected) {
-    socket.connect();
-    socket.emit('voice-join', { roomCode, playerName });
-  }
-});
 
 
   </script>
