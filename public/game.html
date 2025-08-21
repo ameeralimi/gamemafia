@@ -973,11 +973,11 @@
   container.insertBefore(wrap, anchor);
 
   // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
-  // window.addEventListener("load", () => {
-  //   setTimeout(() => {
-  //     micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
-  //   }, 1000); // نصف ثانية عشان تتأكد الأزرار أنشئت بالكامل
-  // });
+  window.addEventListener("load", () => {
+    setTimeout(() => {
+      micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+    }, 500); // نصف ثانية عشان تتأكد الأزرار أنشئت بالكامل
+  });
 })();
 
 let localStream = null;        
@@ -1019,17 +1019,33 @@ function createRemoteAudioEl(peerId) {
 
 function removePeer(peerId) {
   try {
-    peers[peerId]?.getSenders?.().forEach(s => s.track && s.track.stop && s.track.stop());
-    peers[peerId]?.close?.();
+    const pc = peers[peerId];
+    if (pc) {
+      // لا توقف s.track (المحلي)! فقط أغلق الاتصال ونظّف.
+      try {
+        pc.getSenders().forEach(sender => {
+          try { pc.removeTrack(sender); } catch {}
+        });
+      } catch {}
+
+      pc.onicecandidate = null;
+      pc.ontrack = null;
+      pc.onconnectionstatechange = null;
+
+      try { pc.close(); } catch {}
+    }
   } catch {}
+
   delete peers[peerId];
 
-  if (peerAudioEls[peerId]) {
-    peerAudioEls[peerId].srcObject = null;
-    peerAudioEls[peerId].remove();
+  const audio = peerAudioEls[peerId];
+  if (audio) {
+    try { audio.srcObject = null; } catch {}
+    audio.remove();
     delete peerAudioEls[peerId];
   }
 }
+
 
 function createPeerConnection(peerId) {
   const pc = new RTCPeerConnection({
@@ -1077,7 +1093,18 @@ socket.emit('voice-join', { roomCode, playerName });
 
 socket.on('voice-peers', async ({ ids }) => {
   for (const id of ids) {
-    if (!peers[id]) await callPeer(id);
+    if (socket.id < id) { // أنا أبدأ فقط لو آي دي تبعي أصغر
+      await callPeer(id);
+    }
+  }
+});
+
+socket.on('voice-peer-joined', async ({ id }) => {
+  // فقط طرف واحد يبادر
+  if (socket.id < id) {
+    // لا توقف الميك داخل removePeer!
+    removePeer(id);
+    await callPeer(id);
   }
 });
 
@@ -1176,19 +1203,19 @@ document.addEventListener('visibilitychange', () => {
 
 socket.on('voice-reconnect', async ({ ids }) => {
   for (const id of ids) {
-    if (id !== socket.id) {
-      // حذف الاتصال القديم
-      removePeer(id);
-      // إعادة بناء الاتصال من جديد
+    if (id === socket.id) continue;
+    if (socket.id < id) {
+      removePeer(id);      // النسخة الآمنة
       await callPeer(id);
     }
   }
 
-  // تأكيد تشغيل الصوت
+  // تأكيد تشغيل الصوت للـ remote
   Object.values(peerAudioEls).forEach(a => {
     if (speakersOn) a.play().catch(()=>{});
   });
 });
+
 
   </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
