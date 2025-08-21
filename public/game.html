@@ -880,10 +880,10 @@
       // تشغيل صوت التصويت
       playSound('voteSound');
       // لو هذا اللاعب نفسه مقصي أو مشاهد → ما يقدر يصوت
-      if (myStatus === 'spectator' || myStatus === 'eliminated') {
-        alert('❌ لا يمكنك التصويت لأنك مشاهد أو تم إقصاؤك.');
-        return;
-      }
+      // if (myStatus === 'spectator' || myStatus === 'eliminated') {
+      //   alert('❌ لا يمكنك التصويت لأنك مشاهد أو تم إقصاؤك.');
+      //   return;
+      // }
 
       socket.emit('vote-player', { roomCode, playerName, target });
 
