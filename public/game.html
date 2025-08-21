@@ -758,9 +758,21 @@
           : '';
 
         // زر التصويت يظهر فقط إذا اللاعب قابل للتصويت
-        const voteBtn = canVote
+        // هذا يمثل اللاعب الحالي (انت المتصل)
+        const me = players.find(p => p.name === playerName);
+
+        // زر التصويت يظهر فقط إذا:
+        // 1. اللاعب الهدف قابل للتصويت
+        // 2. أنا (المتصل الحالي) لست مشاهد ولا مقصي
+        const voteBtn = (
+          canVote && 
+          me && 
+          !me.spectator && 
+          !eliminatedPlayers.has(me.name)
+        ) 
           ? `<button class="vote-btn" onclick="vote('${player.name}')">تصويت</button>`
           : '';
+
 
         card.innerHTML = `
           <div class="status ${statusClass}"></div>
@@ -868,18 +880,24 @@
 
     function checkAutoExclusion() {
       const autoExclusion = document.getElementById('Automatic_exclusion').checked;
+
+      // 🚫 إذا التشيك بوكس غير مفعل → اطلع فوراً
       if (!autoExclusion) {
-        // إذا مش مفعل، لا تسوي شي
+        console.log("❌ الإقصاء التلقائي ملغي (checkbox غير مفعل)");
         return;
       }
 
+      // ✅ هنا فقط لو التشيك بوكس مفعل
       const totalPlayers = parseInt(document.getElementById('totalPlayers').textContent, 10);
       const voteStatus = parseInt(document.getElementById('voteStatus').textContent, 10);
 
-      if (totalPlayers > 0 && voteStatus === totalPlayers) {
+      if (!autoExclusion && totalPlayers > 0 && voteStatus === totalPlayers) {
+        console.log("✅ سيتم الإقصاء التلقائي");
         kickVotedPlayer();
       }
     }
+
+
     function vote(target) {
       if (!playersVoted.has(playerName)) {
         playersVoted.add(playerName);
