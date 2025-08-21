@@ -43,11 +43,10 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 const rooms = {};
 
 // ===================== حالة الصوت (WebRTC Signaling) =====================
-// نجعل منطق الصوت مستقلًا تمامًا عن منطق اللعبة لتفادي التضارب
 // voiceRooms: { [roomCode]: Set<socketId> }
-const voiceRooms = new Map();
+const voiceRooms = {};
 // socketToVoiceRoom: { [socketId]: roomCode }
-const socketToVoiceRoom = new Map();
+const socketToVoiceRoom = {};
 
 // ===================== اتصال Socket.io =====================
 io.use((socket, next) => {
@@ -298,55 +297,63 @@ io.on('connection', (socket) => {
   });
 
   // ===================== إشارات الصوت (WebRTC Signaling) =====================
-  // ملاحظة مهمة:
-  // - لا نستخدم socket.join(roomCode) للصوت حتى لا يختلط مع غرفة اللعبة.
-  // - نعتمد على voiceRooms + socketToVoiceRoom لإدارة أعضاء قناة الصوت.
-  // - كل التوجيه يكون مباشرًا بين الـ socket.id للأقران.
-
-  // انضمام إلى قناة الصوت
-  socket.on('voice-join', ({ roomCode }) => {
-    if (!roomCode) return;
-
-    // ينضم لغرفة Socket.IO (يسمح بالبرودكاست)
+  // انضمام قناة الصوت
+   // ======= إشارات الصوت (WebRTC Signaling) =======
+  socket.on("voice-join", ({ roomCode, playerName }) => {
     socket.join(roomCode);
+    socket.roomCode = roomCode;
+    socket.playerName = playerName;
 
-    // لو الغرفة ما لها Set للاعبين، نعمل واحدة جديدة
-    if (!voiceRooms.has(roomCode)) voiceRooms.set(roomCode, new Set());
+    // أرسل للمستخدم قائمة الموجودين
+    const ids = [...(io.sockets.adapter.rooms.get(roomCode) || [])].filter(id => id !== socket.id);
+    socket.emit("voice-peers", { ids });
 
-    // أضف اللاعب الحالي (socket.id) إلى الغرفة
-    voiceRooms.get(roomCode).add(socket.id);
+    // أبلغ الموجودين بوجود مستخدم جديد
+    socket.to(roomCode).emit("voice-peer-joined", { id: socket.id, name: playerName });
+  });
 
-    // احفظ الغرفة اللي دخلها اللاعب
-    socketToVoiceRoom.set(socket.id, roomCode);
+  socket.on("voice-offer", ({ roomCode, to, offer }) => {
+    io.to(to).emit("voice-offer", { from: socket.id, offer });
+  });
 
-    // أرسل للقادم قائمة الموجودين (ما عدا نفسه)
-    const peers = Array.from(voiceRooms.get(roomCode)).filter(id => id !== socket.id);
-    io.to(socket.id).emit('voice-peers', { ids: peers });
+  socket.on("voice-answer", ({ roomCode, to, answer }) => {
+    io.to(to).emit("voice-answer", { from: socket.id, answer });
+  });
 
-    // أعلم الموجودين أن لاعب جديد دخل
-    socket.to(roomCode).emit('voice-peer-joined', { id: socket.id });
+  socket.on("voice-ice", ({ roomCode, to, candidate }) => {
+    io.to(to).emit("voice-ice", { from: socket.id, candidate });
+  });
+
+  // socket.on("disconnect", () => {
+  //   if (socket.roomCode) {
+  //     io.to(socket.roomCode).emit("voice-peer-left", { id: socket.id });
+  //   }
+  //   console.log("❌ مستخدم غادر:", socket.id);
+  // });
+
+
+
+
+
+  // ترك قناة الصوت (اختياري)
+  socket.on('voice-leave', () => {
+    const roomCode = socketToVoiceRoom[socket.id];
+    if (!roomCode) return;
+    if (voiceRooms[roomCode]) {
+      voiceRooms[roomCode].delete(socket.id);
+      // أبلغ البقية أن هذا النظير خرج
+      for (const peerId of voiceRooms[roomCode]) {
+        io.to(peerId).emit('voice-peer-left', { id: socket.id });
+      }
+      if (voiceRooms[roomCode].size === 0) delete voiceRooms[roomCode];
+    }
+    delete socketToVoiceRoom[socket.id];
   });
 
 
-  // استقبال عرض (offer) من عميل وإرساله للهدف
-  socket.on('voice-offer', ({ to, offer }) => {
-    if (!to || !offer) return;
-    io.to(to).emit('voice-offer', { from: socket.id, offer });
-  });
+  
 
-  // تمرير الـ Answer
-  socket.on('voice-answer', ({ to, answer }) => {
-    if (!to || !answer) return;
-    io.to(to).emit('voice-answer', { from: socket.id, answer });
-  });
-
-  // تمرير ICE Candidate
-  socket.on('voice-ice', ({ to, candidate }) => {
-    if (!to || !candidate) return;
-    io.to(to).emit('voice-ice', { from: socket.id, candidate });
-  });
-
-
+  
 
   // ------------- قطع الاتصال -------------
   socket.on('disconnect', () => {
@@ -361,16 +368,21 @@ io.on('connection', (socket) => {
       }
     }
 
-    // تنظيف قناة الصوت وإبلاغ الأقران
-    const roomCode = socketToVoiceRoom.get(socket.id);
-    if (roomCode && voiceRooms.has(roomCode)) {
-      voiceRooms.get(roomCode).delete(socket.id);
-      if (voiceRooms.get(roomCode).size === 0) voiceRooms.delete(roomCode);
-      socket.to(roomCode).emit('voice-peer-left', { id: socket.id });
+    if (socket.roomCode) {
+      io.to(socket.roomCode).emit("voice-peer-left", { id: socket.id });
     }
-    socketToVoiceRoom.delete(socket.id);
+    // إخراج من قناة الصوت وإبلاغ الأقران
+    const roomCode = socketToVoiceRoom[socket.id];
+    if (roomCode && voiceRooms[roomCode]) {
+      voiceRooms[roomCode].delete(socket.id);
+      for (const peerId of voiceRooms[roomCode]) {
+        io.to(peerId).emit('voice-peer-left', { id: socket.id });
+      }
+      if (voiceRooms[roomCode].size === 0) delete voiceRooms[roomCode];
+    }
+    delete socketToVoiceRoom[socket.id];
 
-    console.log('❌ مستخدم غادر:', socket.id);
+    console.log('🔌 مستخدم قطع الاتصال:', socket.id);
   });
 });
 
