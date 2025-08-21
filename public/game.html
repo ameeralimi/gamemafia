@@ -485,7 +485,7 @@
       </div>
     </div>
     <div class="settings-box gifts">
-      <div id="settings">
+      <div>
         <h3>⚙️ الإعدادات</h3>
         <!-- اعادات المكرفون والدردشة صوت -->
         <!-- <div class="voice-controls">
@@ -496,14 +496,7 @@
           <!-- <button id="micButton" class="">🎤</button> -->
           
         <!-- </div> -->
-        <!-- عرض رسائل التصويت -->
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="toggleVoteMessages" checked />
-            <span class="checkmark"></span>
-            عرض رسائل التصويت في الدردشة
-          </label>
-        </div>
+        
         <!-- عرض الاصوات في اللعبة -->
         <div class="setting-item">
           <label class="checkbox-label">
@@ -512,22 +505,32 @@
             تفعيل الأصوات في اللعبة 🔊
           </label>
         </div>
-        <!-- اذا كان عدد اللاعبين يساوي عدد المصوتين يسوي اقصاء تلقائي في اللعبة -->
-        <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="Automatic_exclusion" checked />
-            <span class="checkmark"></span>
-            تلقائية الاقصاء عند اكتمال التصويت
-          </label>
-        </div>
-        <!-- زر الإقصاء -->
-        <button id="kickPlayerButton" onclick="kickVotedPlayer()" style="display:none;" class="action-btn">
-          🗳️ إقصاء اللاعب
-        </button>
-        <!-- تعيين مضيف جديد -->
-        <div id="transferHostSection" class="transfer-host-section" style="display: none;">
-          <h3>🔄 تعيين مضيف جديد</h3>
-          <div id="transferList" class="transfer-list"></div>
+        <div id="settings">
+          <!-- عرض رسائل التصويت -->
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="toggleVoteMessages" checked />
+              <span class="checkmark"></span>
+              عرض رسائل التصويت في الدردشة
+            </label>
+          </div>
+          <!-- اذا كان عدد اللاعبين يساوي عدد المصوتين يسوي اقصاء تلقائي في اللعبة -->
+          <div class="setting-item">
+            <label class="checkbox-label">
+              <input type="checkbox" id="Automatic_exclusion" checked />
+              <span class="checkmark"></span>
+              تلقائية الاقصاء عند اكتمال التصويت
+            </label>
+          </div>
+          <!-- زر الإقصاء -->
+          <button id="kickPlayerButton" onclick="kickVotedPlayer()" style="display:none;" class="action-btn">
+            🗳️ إقصاء اللاعب
+          </button>
+          <!-- تعيين مضيف جديد -->
+          <div id="transferHostSection" class="transfer-host-section" style="display: none;">
+            <h3>🔄 تعيين مضيف جديد</h3>
+            <div id="transferList" class="transfer-list"></div>
+          </div>
         </div>
       </div>
       <!-- زر العودة إلى الصفحة الرئيسية -->
