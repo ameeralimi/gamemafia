@@ -115,12 +115,20 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // 🛑 إذا اللعبة بدأت ولاعب جديد → مشاهد
     let isSpectator = false;
+
+    // 🟢 التحقق من gameId إذا اللعبة بدأت
     if (room.started) {
       let existed = room.players.find((p) => p.name === playerName);
-      if (!existed) {
-        isSpectator = true; // جديد فقط → مشاهد
+
+      if (existed) {
+        // إذا كان عنده نفس الـ gameId → لاعب
+        if (existed.gameId !== room.currentGameId) {
+          isSpectator = true;
+        }
+      } else {
+        // لاعب جديد يدخل بعد بداية اللعبة → مشاهد
+        isSpectator = true;
       }
     }
 
@@ -144,6 +152,7 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     io.to(roomCode).emit('update-players', room.players);
   });
+
 
 
 
@@ -175,6 +184,11 @@ io.on('connection', (socket) => {
     room.roles = {};
     room.round = 1;
 
+    // 🟢 توليد GameID جديد
+    const gameId = Date.now() + "-" + Math.floor(Math.random() * 100000);
+    room.currentGameId = gameId;
+
+    // 🔀 خلط اللاعبين
     function shuffle(array) {
       for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -198,11 +212,17 @@ io.on('connection', (socket) => {
       }
     });
 
+    // 🟢 تثبيت GameID عند اللاعبين الأساسيين
     room.players.forEach((player) => {
+      if (!player.spectator) {
+        player.gameId = gameId;
+      }
+
       io.to(player.id).emit('game-started', {
         role: room.roles[player.name],
         roomCode,
-        round: room.round
+        round: room.round,
+        gameId   // يرسل لهم عشان الكلاينت يعرف
       });
     });
 
@@ -213,6 +233,7 @@ io.on('connection', (socket) => {
       });
     }
   });
+
 
   // ------------- إظهار/إخفاء رسائل التصويت في الدردشة -------------
   socket.on('set-vote-messages-visibility', ({ roomCode, show }) => {
