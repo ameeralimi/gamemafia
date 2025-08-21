@@ -882,19 +882,20 @@
       const autoExclusion = document.getElementById('Automatic_exclusion').checked;
 
       // 🚫 إذا التشيك بوكس غير مفعل → اطلع فوراً
-      if (!autoExclusion) {
+      if (autoExclusion == false) {
         console.log("❌ الإقصاء التلقائي ملغي (checkbox غير مفعل)");
-        return;
+      }else {
+        console.log("✅ الإقصاء التلقائي مفعل (checkbox مفعل)");
+        // ✅ هنا فقط لو التشيك بوكس مفعل
+        const totalPlayers = parseInt(document.getElementById('totalPlayers').textContent, 10);
+        const voteStatus = parseInt(document.getElementById('voteStatus').textContent, 10);
+  
+        if (!autoExclusion && totalPlayers > 0 && voteStatus === totalPlayers) {
+          console.log("✅ سيتم الإقصاء التلقائي");
+          kickVotedPlayer();
+        }
       }
 
-      // ✅ هنا فقط لو التشيك بوكس مفعل
-      const totalPlayers = parseInt(document.getElementById('totalPlayers').textContent, 10);
-      const voteStatus = parseInt(document.getElementById('voteStatus').textContent, 10);
-
-      if (!autoExclusion && totalPlayers > 0 && voteStatus === totalPlayers) {
-        console.log("✅ سيتم الإقصاء التلقائي");
-        kickVotedPlayer();
-      }
     }
 
 
