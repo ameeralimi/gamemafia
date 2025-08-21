@@ -94,15 +94,42 @@ io.on('connection', (socket) => {
   socket.on('player-join-room', ({ playerName, roomCode }) => {
     const room = rooms[roomCode];
     if (!room) return;
-    const player = room.players.find((p) => p.name === playerName);
+
+    // 🛑 تحقق: لو اللاعب سبق وانطرد ⇒ يدخل كمشاهد فقط
+    if (room.kickedPlayers.includes(playerName)) {
+      room.players.push({
+        name: playerName,
+        status: 'online',
+        id: socket.id,
+        spectator: true  // مشاهد فقط
+      });
+      socket.join(roomCode);
+      io.to(roomCode).emit('update-players', room.players);
+      return;
+    }
+
+    // 🛑 تحقق: إذا اللعبة بدأت واللاعب جديد ⇒ يدخل كمشاهد فقط
+    const isSpectator = room.started;
+
+    // 🔄 لو اللاعب موجود أصلاً (راجع بعد disconnect)
+    let player = room.players.find((p) => p.name === playerName);
+
     if (player) {
       player.status = 'online';
       player.id = socket.id;
-      socket.join(roomCode);
-      io.to(roomCode).emit('update-players', room.players);
+      if (isSpectator) player.spectator = true; // إذا اللعبة بدأت يحول لمشاهد
     } else {
-      socket.emit('redirect', { to: 'index.html' });
+      // ➕ لاعب جديد
+      room.players.push({
+        name: playerName,
+        status: 'online',
+        id: socket.id,
+        spectator: isSpectator
+      });
     }
+
+    socket.join(roomCode);
+    io.to(roomCode).emit('update-players', room.players);
   });
 
   socket.on('get-rooms-info', () => {
@@ -298,7 +325,7 @@ io.on('connection', (socket) => {
 
   // ===================== إشارات الصوت (WebRTC Signaling) =====================
   // انضمام قناة الصوت
-   // ======= إشارات الصوت (WebRTC Signaling) =======
+  // ======= إشارات الصوت (WebRTC Signaling) =======
   socket.on("voice-join", ({ roomCode, playerName }) => {
     socket.join(roomCode);
     socket.roomCode = roomCode;
@@ -355,9 +382,9 @@ io.on('connection', (socket) => {
   });
 
 
-  
 
-  
+
+
 
   // ------------- قطع الاتصال -------------
   socket.on('disconnect', () => {
