@@ -512,6 +512,14 @@
             تفعيل الأصوات في اللعبة 🔊
           </label>
         </div>
+        <!-- اذا كان عدد اللاعبين يساوي عدد المصوتين يسوي اقصاء تلقائي في اللعبة -->
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="Automatic_exclusion" checked />
+            <span class="checkmark"></span>
+            تلقائية الاقصاء عند اكتمال التصويت
+          </label>
+        </div>
         <!-- زر الإقصاء -->
         <button id="kickPlayerButton" onclick="kickVotedPlayer()" style="display:none;" class="action-btn">
           🗳️ إقصاء اللاعب
@@ -605,23 +613,86 @@
       });
 
       // 🟥 إخفاء عدادات التصويت أيضاً إذا وجدت
-      document.querySelectorAll('.vote-count').forEach(count => {
-        count.style.display = 'none';
-      });
+      // document.querySelectorAll('.vote-count').forEach(count => {
+      //   count.style.display = 'none';
+      // });
 
-      // 🟥 إخفاء زر "إرسال التصويت"
       const submitVoteButton = document.getElementById('submitVoteButton');
       if (submitVoteButton) {
         submitVoteButton.style.display = 'none';
       }
 
-      // 🟨 إشعار للمستخدم (اختياري)
-      const message = document.createElement('div');
+      // 🟨 إنشاء النافذة المنبثقة
+      const overlay = document.createElement('div');
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.backgroundColor = 'rgba(0,0,0,0.6)';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.zIndex = '9999';
+
+      const popup = document.createElement('div');
+      popup.style.background = '#fff';
+      popup.style.padding = '30px';
+      popup.style.borderRadius = '20px';
+      popup.style.textAlign = 'center';
+      popup.style.maxWidth = '400px';
+      popup.style.width = '90%';
+      popup.style.boxShadow = '0 5px 15px rgba(0,0,0,0.3)';
+      popup.style.animation = 'popupFade 0.4s ease';
+
+      // العنوان
+      const title = document.createElement('h2');
+      title.innerText = 'لقد خسرت 😢';
+      title.style.color = '#f44336';
+      title.style.marginBottom = '20px';
+      title.style.fontSize = '24px';
+
+      // الوجه الحزين الكبير
+      const sadFace = document.createElement('div');
+      sadFace.innerText = '😭';
+      sadFace.style.fontSize = '80px';
+      sadFace.style.marginBottom = '20px';
+
+      // النص اللي يوضح
+      const message = document.createElement('p');
       message.innerText = '❌ تم إقصاؤك. لم تعد جزءًا من التصويت.';
       message.style.color = 'red';
-      message.style.marginTop = '10px';
-      document.body.appendChild(message);
+      message.style.fontSize = '16px';
+      message.style.marginBottom = '25px';
+
+      // زر المتابعة كمشاهد
+      const button = document.createElement('button');
+      button.innerText = 'المتابعة في اللعبة كمشاهد';
+      button.className = 'back-button';
+      button.onclick = () => {
+        document.body.removeChild(overlay);
+      };
+
+      // ضم العناصر
+      popup.appendChild(title);
+      popup.appendChild(sadFace);
+      popup.appendChild(message);
+      popup.appendChild(button);
+      overlay.appendChild(popup);
+      document.body.appendChild(overlay);
+
+      // أنيميشن CSS
+      const style = document.createElement('style');
+      style.innerHTML = `
+        @keyframes popupFade {
+          from { transform: scale(0.7); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `;
+      document.head.appendChild(style);
     });
+
+
     socket.on('vote-tie', ({ message }) => {
       const box = document.getElementById('chatBox');
       const div = document.createElement('div');
@@ -640,9 +711,10 @@
       document.getElementById('totalPlayers').textContent = players.length - eliminatedPlayers.size;
       playersVoted.clear();
       updateVoteStatus();
-      // تحديث قائمة اللاعبين
+
+      // تحديث قائمة الإهداء
       const giftTarget = document.getElementById('giftTarget');
-      giftTarget.innerHTML = '<option value="all">لكل اللاعبين</option>'; // الخيار العام
+      giftTarget.innerHTML = '<option value="all">لكل اللاعبين</option>';
       players.forEach(player => {
         const option = document.createElement('option');
         option.value = player.name;
@@ -650,27 +722,56 @@
         giftTarget.appendChild(option);
       });
 
-      // تحديث قائمة اللاعبين في واجهة المستخدم
+      // تحديث قائمة اللاعبين
       const list = document.getElementById('playersList');
       list.innerHTML = '';
+
       players.forEach(player => {
-        const statusClass = player.status === 'online' ? 'online' : player.status === 'idle' ? 'idle' : 'offline';
+        const statusClass =
+          player.status === 'online' ? 'online'
+          : player.status === 'idle' ? 'idle'
+          : 'offline';
+
         const card = document.createElement('div');
         card.className = 'player-card' + (player.role === 'mafia' ? ' mafia' : '');
         card.id = `card-${player.name}`;
+
+        // النص اللي يوضح حالته
+        let extraStatus = '';
+        let canVote = true; // افتراض أنه يقدر يُصوت ويُصوّت له
+
+        if (player.spectator) {
+          extraStatus = `<span style="color:red"> - مشاهد</span>`;
+          canVote = false;
+        }
+        if (eliminatedPlayers.has(player.name)) {
+          extraStatus = `<span style="color:gray"> - تم اقصاؤه (${player.role === 'mafia' ? 'مافيا' : 'مواطن'})</span>`;
+          canVote = false;
+        }
+
         const voteCountElement = `<div class="vote-count" id="vote-${player.name}">0</div>`;
-        const mafiaBtn = player.role === 'mafia' ? '<button class="mafia-btn" onclick="toggleMafiaVisibility()">👁️</button>' : '';
+        const mafiaBtn = player.role === 'mafia'
+          ? '<button class="mafia-btn" onclick="toggleMafiaVisibility()">👁️</button>'
+          : '';
+
+        // زر التصويت يظهر فقط إذا اللاعب قابل للتصويت
+        const voteBtn = canVote
+          ? `<button class="vote-btn" onclick="vote('${player.name}')">تصويت</button>`
+          : '';
+
         card.innerHTML = `
           <div class="status ${statusClass}"></div>
           ${voteCountElement}
           <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${player.name}" />
-          <h4>${player.name}</h4>
+          <h4>${player.name}${extraStatus}</h4>
           ${mafiaBtn}
-          <button class="vote-btn" onclick="vote('${player.name}')">تصويت</button>
+          ${voteBtn}
         `;
+
         list.appendChild(card);
       });
-      // بعد تحديث قائمة اللاعبين
+
+      // إظهار المافيا لبعضهم
       if (role === 'mafia') {
         const mafiaNames = players
           .filter(player => player.role === 'mafia')
@@ -680,6 +781,8 @@
       } else {
         document.querySelector('.mafia-info').style.display = 'none';
       }
+
+      // إدارة نقل المضيف
       if (getCookie('isHost') === 'true') {
         const section = document.getElementById('transferHostSection');
         const list = document.getElementById('transferList');
@@ -690,17 +793,13 @@
           const btn = document.createElement('button');
           btn.textContent = `عيّن ${p.name} كمضيف`;
           btn.onclick = () => {
-            // if (socket.connected) {
-            //   socket.emit('transfer-host', { roomCode, newHost: p.name });
-            // } else {
-            //   alert('الاتصال مفقود، يرجى إعادة تحميل الصفحة');
-            // }
             socket.emit('transfer-host', { roomCode, newHost: p.name });
           };
           list.appendChild(btn);
         });
       }
     });
+
     if (role === 'mafia') {
       socket.emit('get-mafia', { roomCode, playerName });
     }
@@ -763,6 +862,16 @@
       document.getElementById('totalPlayers').textContent = totalPlayers;
     });
 
+
+    function checkAutoExclusion() {
+      const autoExclusion = document.getElementById('Automatic_exclusion').checked;
+      const totalPlayers = parseInt(document.getElementById('totalPlayers').textContent, 10);
+      const voteStatus = parseInt(document.getElementById('voteStatus').textContent, 10);
+
+      if (autoExclusion && totalPlayers > 0 && voteStatus === totalPlayers) {
+        kickVotedPlayer();
+      }
+    }
     function vote(target) {
       if (!playersVoted.has(playerName)) {
         playersVoted.add(playerName);
@@ -770,7 +879,16 @@
       }
       // تشغيل صوت التصويت
       playSound('voteSound');
+      // لو هذا اللاعب نفسه مقصي أو مشاهد → ما يقدر يصوت
+      if (myStatus === 'spectator' || myStatus === 'eliminated') {
+        alert('❌ لا يمكنك التصويت لأنك مشاهد أو تم إقصاؤك.');
+        return;
+      }
+
       socket.emit('vote-player', { roomCode, playerName, target });
+
+      // ✅ تحقق إذا لازم نسوي اقصاء تلقائي
+      checkAutoExclusion();
     }
 
     function updateVoteStatus() {
