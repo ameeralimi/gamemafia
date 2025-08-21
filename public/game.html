@@ -517,7 +517,7 @@
           <!-- اذا كان عدد اللاعبين يساوي عدد المصوتين يسوي اقصاء تلقائي في اللعبة -->
           <div class="setting-item">
             <label class="checkbox-label">
-              <input type="checkbox" id="Automatic_exclusion" checked />
+              <input type="checkbox" id="Automatic_exclusion" />
               <span class="checkmark"></span>
               تلقائية الاقصاء عند اكتمال التصويت
             </label>
@@ -1360,7 +1360,9 @@ socket.on('voice-reconnect', async ({ ids }) => {
   });
 });
 
-
+window.addEventListener('load', () => {
+  document.getElementById('Automatic_exclusion').checked = false;
+});
   </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
   <audio id="kickSound" src="sounds/kick.mp3"></audio>
