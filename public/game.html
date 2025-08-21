@@ -972,6 +972,13 @@
 
   const anchor = document.querySelector('.players') || container.firstChild;
   container.insertBefore(wrap, anchor);
+
+  // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
+  window.addEventListener("load", () => {
+    setTimeout(() => {
+      micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+    }, 500); // نصف ثانية عشان تتأكد الأزرار أنشئت بالكامل
+  });
 })();
 
 let localStream = null;        
@@ -1166,6 +1173,23 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+
+
+socket.on('voice-reconnect', async ({ ids }) => {
+  for (const id of ids) {
+    if (id !== socket.id) {
+      // حذف الاتصال القديم
+      removePeer(id);
+      // إعادة بناء الاتصال من جديد
+      await callPeer(id);
+    }
+  }
+
+  // تأكيد تشغيل الصوت
+  Object.values(peerAudioEls).forEach(a => {
+    if (speakersOn) a.play().catch(()=>{});
+  });
+});
 
   </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
