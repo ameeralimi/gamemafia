@@ -45,9 +45,9 @@ const rooms = {};
 // ===================== حالة الصوت (WebRTC Signaling) =====================
 // نجعل منطق الصوت مستقلًا تمامًا عن منطق اللعبة لتفادي التضارب
 // voiceRooms: { [roomCode]: Set<socketId> }
-const voiceRooms = Object.create(null);
+const voiceRooms = new Map();
 // socketToVoiceRoom: { [socketId]: roomCode }
-const socketToVoiceRoom = Object.create(null);
+const socketToVoiceRoom = new Map();
 
 // ===================== اتصال Socket.io =====================
 io.use((socket, next) => {
@@ -307,20 +307,26 @@ io.on('connection', (socket) => {
   socket.on('voice-join', ({ roomCode }) => {
     if (!roomCode) return;
 
-    // انضمام سوكِت لغرفة سوكِت آي أو (للبرودكاست)
+    // ينضم لغرفة Socket.IO (يسمح بالبرودكاست)
     socket.join(roomCode);
 
+    // لو الغرفة ما لها Set للاعبين، نعمل واحدة جديدة
     if (!voiceRooms.has(roomCode)) voiceRooms.set(roomCode, new Set());
+
+    // أضف اللاعب الحالي (socket.id) إلى الغرفة
     voiceRooms.get(roomCode).add(socket.id);
+
+    // احفظ الغرفة اللي دخلها اللاعب
     socketToVoiceRoom.set(socket.id, roomCode);
 
-    // أرسل للقادم قائمة الموجودين (بدون نفسه)
+    // أرسل للقادم قائمة الموجودين (ما عدا نفسه)
     const peers = Array.from(voiceRooms.get(roomCode)).filter(id => id !== socket.id);
     io.to(socket.id).emit('voice-peers', { ids: peers });
 
     // أعلم الموجودين أن لاعب جديد دخل
     socket.to(roomCode).emit('voice-peer-joined', { id: socket.id });
   });
+
 
   // استقبال عرض (offer) من عميل وإرساله للهدف
   socket.on('voice-offer', ({ to, offer }) => {
