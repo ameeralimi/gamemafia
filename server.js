@@ -290,7 +290,11 @@ io.on('connection', (socket) => {
 
     // تحديث عدد المصوتين
     const votedCount = Object.keys(room.votes).length;
-    const totalPlayers = room.players.filter(p => !p.spectator && !room.kickedPlayers.includes(p.name)).length;
+
+    // فقط اللاعبين الفعّالين (مو مشاهد + مو مقصي)
+    const totalPlayers = room.players.filter(
+      (p) => !p.spectator && !room.kickedPlayers.includes(p.name)
+    ).length;
 
     io.to(roomCode).emit('update-vote-count', { votedCount, totalPlayers });
   });
