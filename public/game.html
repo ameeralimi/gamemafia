@@ -439,6 +439,10 @@
           <button class="eye-btn" onclick="toggleRole()">👁</button>
         </div>
         <div class="stat-block">
+          <p>👥 المشاهدين</p>
+          <strong id="totaspectator" class="round-value">0</strong>
+        </div>
+        <div class="stat-block">
           <p>👥 اللاعبين</p>
           <strong id="totalPlayers" class="round-value">0</strong>
         </div>
@@ -711,21 +715,32 @@
     socket.emit('player-join-room', { playerName, roomCode });
 
     socket.on('update-players', (players) => {
-      document.getElementById('totalPlayers').textContent = players.length - eliminatedPlayers.size;
+      // 🟢 حساب المشاهدين واللاعبين الفعّالين
+      const spectators = players.filter(p => p.spectator).length;
+      const activePlayers = players.filter(
+        p => !p.spectator && !eliminatedPlayers.has(p.name)
+      ).length;
+
+      // 🟢 تحديث العدادات
+      document.getElementById('totaspectator').textContent = spectators;
+      document.getElementById('totalPlayers').textContent = activePlayers;
+
       playersVoted.clear();
       updateVoteStatus();
 
-      // تحديث قائمة الإهداء
+      // 🟢 تحديث قائمة الإهداء
       const giftTarget = document.getElementById('giftTarget');
       giftTarget.innerHTML = '<option value="all">لكل اللاعبين</option>';
       players.forEach(player => {
-        const option = document.createElement('option');
-        option.value = player.name;
-        option.textContent = player.name;
-        giftTarget.appendChild(option);
+        if (!player.spectator && !eliminatedPlayers.has(player.name)) {
+          const option = document.createElement('option');
+          option.value = player.name;
+          option.textContent = player.name;
+          giftTarget.appendChild(option);
+        }
       });
 
-      // تحديث قائمة اللاعبين
+      // 🟢 تحديث قائمة اللاعبين
       const list = document.getElementById('playersList');
       list.innerHTML = '';
 
@@ -741,7 +756,7 @@
 
         // النص اللي يوضح حالته
         let extraStatus = '';
-        let canVote = true; // افتراض أنه يقدر يُصوت ويُصوّت له
+        let canVote = true;
 
         if (player.spectator) {
           extraStatus = `<span style="color:red"> - مشاهد</span>`;
@@ -757,22 +772,20 @@
           ? '<button class="mafia-btn" onclick="toggleMafiaVisibility()">👁️</button>'
           : '';
 
-        // زر التصويت يظهر فقط إذا اللاعب قابل للتصويت
-        // هذا يمثل اللاعب الحالي (انت المتصل)
+        // اللاعب الحالي (أنا)
         const me = players.find(p => p.name === playerName);
 
         // زر التصويت يظهر فقط إذا:
         // 1. اللاعب الهدف قابل للتصويت
         // 2. أنا (المتصل الحالي) لست مشاهد ولا مقصي
         const voteBtn = (
-          canVote && 
-          me && 
-          !me.spectator && 
+          canVote &&
+          me &&
+          !me.spectator &&
           !eliminatedPlayers.has(me.name)
-        ) 
+        )
           ? `<button class="vote-btn" onclick="vote('${player.name}')">تصويت</button>`
           : '';
-
 
         card.innerHTML = `
           <div class="status ${statusClass}"></div>
@@ -786,7 +799,7 @@
         list.appendChild(card);
       });
 
-      // إظهار المافيا لبعضهم
+      // 🟢 إظهار المافيا لبعضهم
       if (role === 'mafia') {
         const mafiaNames = players
           .filter(player => player.role === 'mafia')
@@ -797,7 +810,7 @@
         document.querySelector('.mafia-info').style.display = 'none';
       }
 
-      // إدارة نقل المضيف
+      // 🟢 إدارة نقل المضيف
       if (getCookie('isHost') === 'true') {
         const section = document.getElementById('transferHostSection');
         const list = document.getElementById('transferList');
@@ -814,6 +827,7 @@
         });
       }
     });
+
 
     if (role === 'mafia') {
       socket.emit('get-mafia', { roomCode, playerName });
@@ -1021,8 +1035,6 @@
     }
     socket.on('player-eliminated', ({ name, role }) => {
       eliminatedPlayers.add(name);
-      const current = parseInt(document.getElementById('totalPlayers').textContent);
-      document.getElementById('totalPlayers').textContent = current - 1;
 
       playersVoted.clear();
       updateVoteStatus();
@@ -1035,7 +1047,7 @@
       box.appendChild(div);
       box.scrollTop = box.scrollHeight;
 
-      // يمكنك أيضاً تغيير مظهر الكرت أو إزالته:
+      // تحديث مظهر الكرت
       const card = document.getElementById(`card-${name}`);
       if (card) {
         card.style.opacity = '0.5';
@@ -1048,6 +1060,7 @@
       //   playSound('kickMafiaSound');
       // }
     });
+
     document.addEventListener("visibilitychange", () => {
       if (!socket.connected && document.visibilityState === "visible") {
         socket.connect(); // إعادة الاتصال عند الرجوع من الخلفية
