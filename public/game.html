@@ -1019,6 +1019,8 @@ function createRemoteAudioEl(peerId) {
 }
 
 
+
+
 function removePeer(peerId) {
   try {
     peers[peerId]?.getSenders?.().forEach(s => s.track && s.track.stop && s.track.stop());
@@ -1073,13 +1075,29 @@ async function callPeer(peerId) {
 }
 
 // عند الدخول للغرفة
-socket.emit('voice-join', { roomCode, playerName });
+// لما تنضم للغرفة
+socket.emit("voice-join", { roomCode: "mafia", playerName: playerName });
 
-socket.on('voice-peers', async ({ ids }) => {
-  for (const id of ids) {
-    if (!peers[id]) await callPeer(id);
-  }
+// السيرفر يرجع لك قائمة الموجودين
+socket.on("voice-peers", ({ ids }) => {
+  ids.forEach(peerId => {
+    callPeer(peerId); // أنشئ اتصال مع الموجودين
+  });
 });
+
+// لما يدخل لاعب جديد
+socket.on("voice-peer-joined", ({ id, name }) => {
+  console.log("🎤 لاعب جديد دخل:", name || id);
+  callPeer(id); // أرسل له الصوت
+});
+
+// socket.emit('voice-join', { roomCode, playerName });
+
+// socket.on('voice-peers', async ({ ids }) => {
+//   for (const id of ids) {
+//     if (!peers[id]) await callPeer(id);
+//   }
+// });
 
 // استقبال اتصال صوتي
 socket.on("voice-offer", async ({ from, offer }) => {
