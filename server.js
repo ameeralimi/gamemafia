@@ -95,35 +95,42 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room) return;
 
-    // 🛑 تحقق: لو اللاعب سبق وانطرد ⇒ يدخل كمشاهد فقط
+    // 🛑 لو كان مطرود → يدخل كمشاهد
     if (room.kickedPlayers.includes(playerName)) {
-      room.players.push({
-        name: playerName,
-        status: 'online',
-        id: socket.id,
-        spectator: true  // مشاهد فقط
-      });
+      let player = room.players.find((p) => p.name === playerName);
+      if (player) {
+        player.status = 'online';
+        player.id = socket.id;
+        player.spectator = true;
+      } else {
+        room.players.push({
+          name: playerName,
+          status: 'online',
+          id: socket.id,
+          spectator: true
+        });
+      }
       socket.join(roomCode);
       io.to(roomCode).emit('update-players', room.players);
       return;
     }
 
-    // 🛑 تحقق: إذا اللعبة بدأت واللاعب جديد ⇒ يدخل كمشاهد فقط
+    // 🛑 إذا اللعبة بدأت ولاعب جديد → مشاهد
     let isSpectator = false;
     if (room.started) {
       let existed = room.players.find((p) => p.name === playerName);
       if (!existed) {
-        isSpectator = true;
+        isSpectator = true; // جديد فقط → مشاهد
       }
     }
 
-    // 🔄 لو اللاعب موجود أصلاً (راجع بعد disconnect)
+    // 🔄 لو اللاعب موجود أصلاً
     let player = room.players.find((p) => p.name === playerName);
 
     if (player) {
       player.status = 'online';
       player.id = socket.id;
-      if (isSpectator) player.spectator = true; // يحول فقط لو جديد
+      if (isSpectator) player.spectator = true;
     } else {
       // ➕ لاعب جديد
       room.players.push({
@@ -137,6 +144,7 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     io.to(roomCode).emit('update-players', room.players);
   });
+
 
 
   socket.on('get-rooms-info', () => {
