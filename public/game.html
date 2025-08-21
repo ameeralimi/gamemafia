@@ -973,11 +973,11 @@
   container.insertBefore(wrap, anchor);
 
   // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
-  window.addEventListener("load", () => {
-    setTimeout(() => {
-      micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
-    }, 500); // نصف ثانية عشان تتأكد الأزرار أنشئت بالكامل
-  });
+  // window.addEventListener("load", () => {
+  //   setTimeout(() => {
+  //     micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+  //   }, 1000); // نصف ثانية عشان تتأكد الأزرار أنشئت بالكامل
+  // });
 })();
 
 let localStream = null;        
