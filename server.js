@@ -109,7 +109,13 @@ io.on('connection', (socket) => {
     }
 
     // 🛑 تحقق: إذا اللعبة بدأت واللاعب جديد ⇒ يدخل كمشاهد فقط
-    const isSpectator = room.started;
+    let isSpectator = false;
+    if (room.started) {
+      let existed = room.players.find((p) => p.name === playerName);
+      if (!existed) {
+        isSpectator = true;
+      }
+    }
 
     // 🔄 لو اللاعب موجود أصلاً (راجع بعد disconnect)
     let player = room.players.find((p) => p.name === playerName);
@@ -117,7 +123,7 @@ io.on('connection', (socket) => {
     if (player) {
       player.status = 'online';
       player.id = socket.id;
-      if (isSpectator) player.spectator = true; // إذا اللعبة بدأت يحول لمشاهد
+      if (isSpectator) player.spectator = true; // يحول فقط لو جديد
     } else {
       // ➕ لاعب جديد
       room.players.push({
@@ -131,6 +137,7 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     io.to(roomCode).emit('update-players', room.players);
   });
+
 
   socket.on('get-rooms-info', () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
