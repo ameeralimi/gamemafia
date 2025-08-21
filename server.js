@@ -44,7 +44,7 @@ const rooms = {};
 
 // ===================== حالة الصوت (WebRTC Signaling) =====================
 // voiceRooms: { [roomCode]: Set<socketId> }
-const voiceRooms = {};
+const voiceRooms = new Map();
 // socketToVoiceRoom: { [socketId]: roomCode }
 const socketToVoiceRoom = {};
 
@@ -304,14 +304,17 @@ io.on('connection', (socket) => {
     socket.roomCode = roomCode;
     socket.playerName = playerName;
 
-    // أرسل للمستخدم قائمة الموجودين
+    // أرسل للمستخدم الجديد قائمة الموجودين (غير نفسه)
     const ids = [...(io.sockets.adapter.rooms.get(roomCode) || [])].filter(id => id !== socket.id);
     socket.emit("voice-peers", { ids });
 
     // أبلغ الموجودين بوجود مستخدم جديد
     socket.to(roomCode).emit("voice-peer-joined", { id: socket.id, name: playerName });
-    socket.to(roomCode).emit("voice-reconnect", { ids: [...voiceRooms.get(roomCode)] });
+
+    // ✅ أبلغ كل الموجودين في الغرفة (عدا الجديد) أنهم يعيدوا الاتصال مع بعض
+    socket.to(roomCode).emit("voice-reconnect", { ids: [...(io.sockets.adapter.rooms.get(roomCode) || [])] });
   });
+
 
   socket.on("voice-offer", ({ roomCode, to, offer }) => {
     io.to(to).emit("voice-offer", { from: socket.id, offer });
