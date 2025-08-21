@@ -522,413 +522,336 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-    function playSound(id) {
-      const enableSounds = document.getElementById('toggleSounds')?.checked;
-      if (!enableSounds) return;
+  <!-- ضعه في صفحتك بعد العناصر التي تحتوي هذه الـ IDs المذكورة في الكود -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+/* =========================
+   إعدادات عامة للعبة
+   ========================= */
 
-      const audio = document.getElementById(id);
-      if (audio) {
-        audio.currentTime = 0;
-        audio.play();
-      }
-    }
-    function goToHome() {
-      window.location.href = 'index.html';
-    }
-    const socket = io("https://gamemafia.onrender.com", {
-      transports: ["websocket", "polling"]
+function playSound(id) {
+  const enableSounds = document.getElementById('toggleSounds')?.checked;
+  if (!enableSounds) return;
+
+  const audio = document.getElementById(id);
+  if (audio) {
+    audio.currentTime = 0;
+    audio.play();
+  }
+}
+function goToHome() { window.location.href = 'index.html'; }
+
+const socket = io("https://gamemafia.onrender.com", {
+  transports: ["websocket", "polling"]
+});
+
+const playerName = getCookie('playerName');
+const roomCode   = getCookie('roomCode');
+const isHost     = getCookie('isHost') === 'true';
+let playersVoted = new Set();
+let eliminatedPlayers = new Set();
+
+document.getElementById('tableCodeDisplay').textContent = roomCode;
+document.getElementById('roundNum').textContent = getCookie('round') || '1';
+const role = getCookie('role');  
+const mafiaCount = getCookie('mafiaCount'); 
+let revealed = false;
+
+function toggleRole() {
+  const roleSpan = document.getElementById('role');
+  revealed = !revealed;
+  roleSpan.style.filter = revealed ? 'none' : 'blur(15px)';
+}
+
+if (isHost) {
+  document.getElementById('kickPlayerButton').style.display = 'block';
+}
+
+document.getElementById('toggleVoteMessages').addEventListener('change', (e) => {
+  const show = e.target.checked;
+  socket.emit('set-vote-messages-visibility', { roomCode, show });
+});
+
+if (getCookie('isHost') === 'true') {
+  document.getElementById('settings').style.display = 'block';
+} else {
+  document.getElementById('settings').style.display = 'none';
+}
+
+function kickVotedPlayer() {
+  socket.emit('kick-voted-player', { roomCode });
+}
+
+socket.on('update-round', ({ round }) => {
+  document.getElementById('roundNum').textContent = round;
+});
+
+socket.on('you-have-been-kicked', () => {
+  document.querySelectorAll('.vote-button').forEach(btn => btn.style.display = 'none');
+  document.querySelectorAll('.vote-count').forEach(count => count.style.display = 'none');
+  const submitVoteButton = document.getElementById('submitVoteButton');
+  if (submitVoteButton) submitVoteButton.style.display = 'none';
+
+  const message = document.createElement('div');
+  message.innerText = '❌ تم إقصاؤك. لم تعد جزءًا من التصويت.';
+  message.style.color = 'red';
+  message.style.marginTop = '10px';
+  document.body.appendChild(message);
+});
+
+socket.on('vote-tie', ({ message }) => {
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'chat-message';
+  div.innerHTML = `<em>${message}</em>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+});
+
+// عرض الدور
+document.getElementById('role').textContent = role === 'mafia' ? 'مافيا' : 'مواطن';
+
+socket.emit('player-join-room', { playerName, roomCode });
+
+socket.on('update-players', (players) => {
+  document.getElementById('totalPlayers').textContent = players.length - eliminatedPlayers.size;
+  playersVoted.clear();
+  updateVoteStatus();
+
+  // تحديث قائمة إهداء
+  const giftTarget = document.getElementById('giftTarget');
+  giftTarget.innerHTML = '<option value="all">لكل اللاعبين</option>';
+  players.forEach(player => {
+    const option = document.createElement('option');
+    option.value = player.name;
+    option.textContent = player.name;
+    giftTarget.appendChild(option);
+  });
+
+  // تحديث بطاقات اللاعبين
+  const list = document.getElementById('playersList');
+  list.innerHTML = '';
+  players.forEach(player => {
+    const statusClass = player.status === 'online' ? 'online' : player.status === 'idle' ? 'idle' : 'offline';
+    const card = document.createElement('div');
+    card.className = 'player-card' + (player.role === 'mafia' ? ' mafia' : '');
+    card.id = `card-${player.name}`;
+    const voteCountElement = `<div class="vote-count" id="vote-${player.name}">0</div>`;
+    const mafiaBtn = player.role === 'mafia' ? '<button class="mafia-btn" onclick="toggleMafiaVisibility()">👁️</button>' : '';
+    card.innerHTML = `
+      <div class="status ${statusClass}"></div>
+      ${voteCountElement}
+      <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${player.name}" />
+      <h4>${player.name}</h4>
+      ${mafiaBtn}
+      <button class="vote-btn" onclick="vote('${player.name}')">تصويت</button>
+    `;
+    list.appendChild(card);
+  });
+
+  // كشف المافيا للمافيا فقط
+  if (role === 'mafia') {
+    const mafiaNames = players.filter(p => p.role === 'mafia').map(p => p.name).join('، ');
+    const el = document.getElementById('mafiaallgame');
+    if (el) el.textContent = mafiaNames;
+  } else {
+    const info = document.querySelector('.mafia-info');
+    if (info) info.style.display = 'none';
+  }
+
+  // قسم نقل الاستضافة
+  if (getCookie('isHost') === 'true') {
+    const section = document.getElementById('transferHostSection');
+    const tlist = document.getElementById('transferList');
+    section.style.display = 'block';
+    tlist.innerHTML = '';
+    players.forEach(p => {
+      if (p.name === playerName) return;
+      const btn = document.createElement('button');
+      btn.textContent = `عيّن ${p.name} كمضيف`;
+      btn.onclick = () => socket.emit('transfer-host', { roomCode, newHost: p.name });
+      tlist.appendChild(btn);
     });
+  }
+});
 
-    const playerName = getCookie('playerName');
-    const roomCode = getCookie('roomCode');
-    const isHost = getCookie('isHost') === 'true';
-    let playersVoted = new Set();
-    let eliminatedPlayers = new Set(); 
+if (role === 'mafia') socket.emit('get-mafia', { roomCode, playerName });
 
-    document.getElementById('tableCodeDisplay').textContent = roomCode;
-    document.getElementById('roundNum').textContent = getCookie('round') || '1';
-    const role = getCookie('role');  // الحصول على الدور الخاص باللاعب
-    const mafiaCount = getCookie('mafiaCount'); // الحصول على عدد المافيا المتبقيين
-    let revealed = false;
-    function toggleRole() {
-      const roleSpan = document.getElementById('role');
-      revealed = !revealed;
-      roleSpan.style.filter = revealed ? 'none' : 'blur(15px)';
-    }
-    if (isHost) {
-      // document.getElementById('endRoundButton').style.display = 'block';
-      document.getElementById('kickPlayerButton').style.display = 'block';
-    }
-    // حدث التصويت يظهر في الدردشه زر الاعدادات الخاص به
-    document.getElementById('toggleVoteMessages').addEventListener('change', (e) => {
-      const show = e.target.checked;
-      socket.emit('set-vote-messages-visibility', { roomCode, show });
-    });
-    if (getCookie('isHost') === 'true') {
-      document.getElementById('settings').style.display = 'block';
-    } else {
-      document.getElementById('settings').style.display = 'none';
-    }
-    // انتها من حدث التصويت يظهر في الدردشة زر الاعدادات الخاص به
-    function kickVotedPlayer() {
-      // if (playersVoted.size === 0) {
-      //   alert("❌ لا يوجد تصويت!");
-      //   return;
-      // }
+socket.on('show-mafia', (mafiaPlayers) => {
+  const mafiaListContainer = document.getElementById('mafiaallgame');
+  if (!mafiaListContainer) return;
+  mafiaListContainer.innerHTML = mafiaPlayers.map(p => `<div>🕵️‍♂️ ${p.name}</div>`).join('');
+});
 
-      // const totalPlayers = parseInt(document.getElementById('totalPlayers').textContent);
-      // if (playersVoted.size < totalPlayers) {
-      //   alert("⏳ لم يصوّت جميع اللاعبين بعد.");
-      //   return;
-      // }
+socket.on('you-are-now-host', () => {
+  document.cookie = "isHost=true; path=/";
+  document.getElementById('kickPlayerButton').style.display = 'block';
 
-      socket.emit('kick-voted-player', { roomCode });
-    }
-    socket.on('update-round', ({ round }) => {
-      document.getElementById('roundNum').textContent = round;
-    });
-    socket.on('you-have-been-kicked', () => {
-      // 🟥 إخفاء جميع أزرار التصويت عند اللاعب الذي تم اقصاؤه فقط
-      document.querySelectorAll('.vote-button').forEach(btn => {
-        btn.style.display = 'none';
-      });
-
-      // 🟥 إخفاء عدادات التصويت أيضاً إذا وجدت
-      document.querySelectorAll('.vote-count').forEach(count => {
-        count.style.display = 'none';
-      });
-
-      // 🟥 إخفاء زر "إرسال التصويت"
-      const submitVoteButton = document.getElementById('submitVoteButton');
-      if (submitVoteButton) {
-        submitVoteButton.style.display = 'none';
-      }
-
-      // 🟨 إشعار للمستخدم (اختياري)
-      const message = document.createElement('div');
-      message.innerText = '❌ تم إقصاؤك. لم تعد جزءًا من التصويت.';
-      message.style.color = 'red';
-      message.style.marginTop = '10px';
-      document.body.appendChild(message);
-    });
-    socket.on('vote-tie', ({ message }) => {
-      const box = document.getElementById('chatBox');
-      const div = document.createElement('div');
-      div.className = 'chat-message';
-      div.innerHTML = `<em>${message}</em>`;
-      box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
-    });
-    // عرض الدور
-    document.getElementById('role').textContent = role === 'mafia' ? 'مافيا' : 'مواطن';
-    // document.getElementById('remainingMafia').textContent = mafiaCount;
-
+  const transferSection = document.getElementById('transferHostSection');
+  if (transferSection) {
+    transferSection.style.display = 'block';
+    const list = document.getElementById('transferList');
+    list.innerHTML = '';
     socket.emit('player-join-room', { playerName, roomCode });
+  }
+});
 
-    socket.on('update-players', (players) => {
-      document.getElementById('totalPlayers').textContent = players.length - eliminatedPlayers.size;
-      playersVoted.clear();
-      updateVoteStatus();
-      // تحديث قائمة اللاعبين
-      const giftTarget = document.getElementById('giftTarget');
-      giftTarget.innerHTML = '<option value="all">لكل اللاعبين</option>'; // الخيار العام
-      players.forEach(player => {
-        const option = document.createElement('option');
-        option.value = player.name;
-        option.textContent = player.name;
-        giftTarget.appendChild(option);
-      });
+socket.on('host-transferred', ({ newHost }) => {
+  const isMeHost = newHost === playerName;
+  document.cookie = `isHost=${isMeHost}; path=/`;
 
-      // تحديث قائمة اللاعبين في واجهة المستخدم
-      const list = document.getElementById('playersList');
-      list.innerHTML = '';
-      players.forEach(player => {
-        const statusClass = player.status === 'online' ? 'online' : player.status === 'idle' ? 'idle' : 'offline';
-        const card = document.createElement('div');
-        card.className = 'player-card' + (player.role === 'mafia' ? ' mafia' : '');
-        card.id = `card-${player.name}`;
-        const voteCountElement = `<div class="vote-count" id="vote-${player.name}">0</div>`;
-        const mafiaBtn = player.role === 'mafia' ? '<button class="mafia-btn" onclick="toggleMafiaVisibility()">👁️</button>' : '';
-        card.innerHTML = `
-          <div class="status ${statusClass}"></div>
-          ${voteCountElement}
-          <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${player.name}" />
-          <h4>${player.name}</h4>
-          ${mafiaBtn}
-          <button class="vote-btn" onclick="vote('${player.name}')">تصويت</button>
-        `;
-        list.appendChild(card);
-      });
-      // بعد تحديث قائمة اللاعبين
-      if (role === 'mafia') {
-        const mafiaNames = players
-          .filter(player => player.role === 'mafia')
-          .map(player => player.name)
-          .join('، ');
-        document.getElementById('mafiaallgame').textContent = mafiaNames;
-      } else {
-        document.querySelector('.mafia-info').style.display = 'none';
-      }
-      if (getCookie('isHost') === 'true') {
-        const section = document.getElementById('transferHostSection');
-        const list = document.getElementById('transferList');
-        section.style.display = 'block';
-        list.innerHTML = '';
-        players.forEach(p => {
-          if (p.name === playerName) return;
-          const btn = document.createElement('button');
-          btn.textContent = `عيّن ${p.name} كمضيف`;
-          btn.onclick = () => {
-            // if (socket.connected) {
-            //   socket.emit('transfer-host', { roomCode, newHost: p.name });
-            // } else {
-            //   alert('الاتصال مفقود، يرجى إعادة تحميل الصفحة');
-            // }
-            socket.emit('transfer-host', { roomCode, newHost: p.name });
-          };
-          list.appendChild(btn);
-        });
-      }
-    });
-    if (role === 'mafia') {
-      socket.emit('get-mafia', { roomCode, playerName });
-    }
-    socket.on('show-mafia', (mafiaPlayers) => {
-      const mafiaListContainer = document.getElementById('mafiaallgame');
-      if (!mafiaListContainer) return;
+  const transferSection = document.getElementById('transferHostSection');
+  if (transferSection) transferSection.style.display = isMeHost ? 'block' : 'none';
 
-      mafiaListContainer.innerHTML = mafiaPlayers
-        .map(p => `<div>🕵️‍♂️ ${p.name}</div>`)
-        .join('');
-    });
+  const kickButton = document.getElementById('kickPlayerButton');
+  if (kickButton) kickButton.style.display = isMeHost ? 'block' : 'none';
+});
 
-    socket.on('you-are-now-host', () => {
-      // ✅ تعيين الكوكي isHost=true
-      document.cookie = "isHost=true; path=/";
+function toggleMafiaVisibility() {
+  const roleText = document.getElementById('role').textContent.trim();
+  const mafiaallgame22 = document.getElementById('mafiaallgame22');
+  if (roleText !== 'مافيا') return;
+  mafiaallgame22.style.display = (mafiaallgame22.style.display === 'block') ? 'none' : 'block';
+}
 
-      // ✅ إظهار زر الإقصاء
-      document.getElementById('kickPlayerButton').style.display = 'block';
+socket.on('update-vote-count', ({ votedCount, totalPlayers }) => {
+  document.getElementById('voteStatus').textContent = votedCount;
+  document.getElementById('totalPlayers').textContent = totalPlayers;
+});
 
-      // ✅ إظهار قسم تعيين المضيف الجديد
-      const transferSection = document.getElementById('transferHostSection');
-      if (transferSection) {
-        transferSection.style.display = 'block';
-        const list = document.getElementById('transferList');
-        list.innerHTML = ''; // تنظيف الأزرار القديمة
+function vote(target) {
+  if (!playersVoted.has(playerName)) {
+    playersVoted.add(playerName);
+    updateVoteStatus();
+  }
+  playSound('voteSound');
+  socket.emit('vote-player', { roomCode, playerName, target });
+}
 
-        // ✅ إعادة توليد أزرار التعيين
-        socket.emit('player-join-room', { playerName, roomCode }); // هذا سيجعل السيرفر يعيد إرسال اللاعبين
-      }
-    });
+function updateVoteStatus() {
+  document.getElementById('voteStatus').textContent = playersVoted.size;
+}
 
-    socket.on('host-transferred', ({ newHost }) => {
-      const isMeHost = newHost === playerName;
+function endRound() {
+  socket.emit('end-round', { roomCode });
+}
 
-      // حفظ الكوكي
-      document.cookie = `isHost=${isMeHost}; path=/`;
+socket.on('vote-result', (results) => {
+  results.forEach(({ playerName, count }) => {
+    const el = document.getElementById(`vote-${playerName}`);
+    if (el) el.textContent = count;
+  });
+  updateVoteStatus();
+});
 
-      // إظهار أو إخفاء العناصر الخاصة بالمضيف الجديد
-      const transferSection = document.getElementById('transferHostSection');
-      if (transferSection) transferSection.style.display = isMeHost ? 'block' : 'none';
+function sendMessage() {
+  const msg = document.getElementById('chatInput').value.trim();
+  if (!msg) return;
+  socket.emit('chat-message', { roomCode, playerName, message: msg });
+  document.getElementById('chatInput').value = '';
+}
 
-      const kickButton = document.getElementById('kickPlayerButton');
-      if (kickButton) kickButton.style.display = isMeHost ? 'block' : 'none';
-    });
+document.getElementById('chatInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    sendMessage();
+  }
+});
 
-    function toggleMafiaVisibility() {
-      const role22 = document.getElementById('role').textContent.trim();  // جلب النص الموجود في العنصر
-      const mafiaallgame22 = document.getElementById('mafiaallgame22');
-      
-      if (role22 !== 'مافيا') return; // إذا لم يكن مافيا لا تعمل شيء
-      
-      if (mafiaallgame22.style.display === 'block') {
-        mafiaallgame22.style.display = 'none';
-      } else {
-        mafiaallgame22.style.display = 'block';
-      }
-    }
-    socket.on('update-vote-count', ({ votedCount, totalPlayers }) => {
-      document.getElementById('voteStatus').textContent = votedCount;
-      document.getElementById('totalPlayers').textContent = totalPlayers;
-    });
+socket.on('chat-message', ({ playerName, message }) => {
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'chat-message';
+  div.innerHTML = `<strong>${playerName}:</strong> ${message}`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+});
 
-    function vote(target) {
-      if (!playersVoted.has(playerName)) {
-        playersVoted.add(playerName);
-        updateVoteStatus(); // تحديث عدد المصوتين
-      }
-      // تشغيل صوت التصويت
-      playSound('voteSound');
-      socket.emit('vote-player', { roomCode, playerName, target });
-    }
+function sendGift(gift) {
+  const target = document.getElementById('giftTarget').value;
+  socket.emit('send-gift', { roomCode, playerName, gift, target });
+}
 
-    function updateVoteStatus() {
-      document.getElementById('voteStatus').textContent = playersVoted.size;
-    }
+socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
+  let recipientList;
 
-    function endRound() {
-      socket.emit('end-round', { roomCode });
-    }
+  const giftSounds = {
+    '🌹': 'sound-rose',
+    '🍅': 'sound-tomato',
+    '💣': 'sound-bomb',
+    '🐴': 'sound-donkey',
+    '😢': 'a',
+    '😂': 'b'
+  };
+  const audioId = giftSounds[gift];
+  if (audioId) playSound(audioId);
 
-    socket.on('vote-result', (results) => {
-      results.forEach(({ playerName, count }) => {
-        const el = document.getElementById(`vote-${playerName}`);
-        if (el) el.textContent = count;
-      });
+  if (target === 'all') {
+    recipientList = Array.from(document.querySelectorAll('.player-card'));
+  } else {
+    recipientList = [document.getElementById(`card-${target}`)];
+  }
 
-      // إعادة تحديث حالة التصويت
-      updateVoteStatus();
-    });
+  recipientList.forEach(card => {
+    if (!card) return;
+    const anim = document.createElement('div');
+    anim.className = 'gift-anim';
+    anim.textContent = gift;
+    card.appendChild(anim);
+    setTimeout(() => anim.remove(), 1000);
+  });
 
-    function sendMessage() {
-      const msg = document.getElementById('chatInput').value.trim();
-      if (!msg) return;
-      socket.emit('chat-message', { roomCode, playerName, message: msg });
-      document.getElementById('chatInput').value = '';
-    }
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  const msg = target === 'all'
+    ? `${sender} أرسل هدية ${gift} للجميع 🎁`
+    : `${sender} أرسل ${gift} إلى ${target}`;
+  div.className = 'chat-message';
+  div.innerHTML = `<em>${msg}</em>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+});
 
-    document.getElementById('chatInput').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
 
-    socket.on('chat-message', ({ playerName, message }) => {
-      const box = document.getElementById('chatBox');
-      const div = document.createElement('div');
-      div.className = 'chat-message';
-      div.innerHTML = `<strong>${playerName}:</strong> ${message}`;
-      box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
-    });
+socket.on('player-eliminated', ({ name, role }) => {
+  eliminatedPlayers.add(name);
+  const current = parseInt(document.getElementById('totalPlayers').textContent);
+  document.getElementById('totalPlayers').textContent = current - 1;
 
-    function sendGift(gift) {
-      const target = document.getElementById('giftTarget').value;
-      socket.emit('send-gift', { roomCode, playerName, gift, target });
-    }
+  playersVoted.clear();
+  updateVoteStatus();
 
-    // داخل دالة استقبال الهدية:
-    socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
-      let recipientList;
+  playSound('kickSound');
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.className = 'chat-message';
+  div.innerHTML = `<strong>❌ ${name} تم إقصاؤه من اللعبة. كان ${role === 'mafia' ? '🟥 مافيا' : '🟦 مواطن'}.</strong>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
 
-      // 🟡 تشغيل الصوت حسب نوع الهدية
-      const giftSounds = {
-        '🌹': 'sound-rose',
-        '🍅': 'sound-tomato',
-        '💣': 'sound-bomb',
-        '🐴': 'sound-donkey',
-        '😢': 'a',
-        '😂': 'b'
-      };
-      const audioId = giftSounds[gift];
-      if (audioId) {
-        playSound(audioId);
-      }
+  const card = document.getElementById(`card-${name}`);
+  if (card) {
+    card.style.opacity = '0.5';
+    card.querySelector('.vote-btn')?.remove();
+  }
+});
 
-      // 🎯 تحديد المستلمين
-      if (target === 'all') {
-        recipientList = Array.from(document.querySelectorAll('.player-card'));
-      } else {
-        recipientList = [document.getElementById(`card-${target}`)];
-      }
+document.addEventListener("visibilitychange", () => {
+  if (!socket.connected && document.visibilityState === "visible") {
+    socket.connect();
+  }
+});
 
-      // ✨ تنفيذ الأنيميشن للهدية
-      recipientList.forEach(card => {
-        if (!card) return;
-        const anim = document.createElement('div');
-        anim.className = 'gift-anim';
-        anim.textContent = gift;
-        card.appendChild(anim);
-        setTimeout(() => anim.remove(), 1000);
-      });
+/* =========================
+   واجهة وأحداث المحادثة الصوتية (عميل فقط)
+   ========================= */
 
-      // 📝 إضافة رسالة إلى الدردشة
-      const box = document.getElementById('chatBox');
-      const div = document.createElement('div');
-      const msg = target === 'all'
-        ? `${sender} أرسل هدية ${gift} للجميع 🎁`
-        : `${sender} أرسل ${gift} إلى ${target}`;
-      div.className = 'chat-message';
-      div.innerHTML = `<em>${msg}</em>`;
-      box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
-    });
-
-
-
-
-    function getCookie(name) {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop().split(';').shift();
-    }
-    socket.on('player-eliminated', ({ name, role }) => {
-      eliminatedPlayers.add(name);
-      const current = parseInt(document.getElementById('totalPlayers').textContent);
-      document.getElementById('totalPlayers').textContent = current - 1;
-
-      playersVoted.clear();
-      updateVoteStatus();
-
-      playSound('kickSound');
-      const box = document.getElementById('chatBox');
-      const div = document.createElement('div');
-      div.className = 'chat-message';
-      div.innerHTML = `<strong>❌ ${name} تم إقصاؤه من اللعبة. كان ${role === 'mafia' ? '🟥 مافيا' : '🟦 مواطن'}.</strong>`;
-      box.appendChild(div);
-      box.scrollTop = box.scrollHeight;
-
-      // يمكنك أيضاً تغيير مظهر الكرت أو إزالته:
-      const card = document.getElementById(`card-${name}`);
-      if (card) {
-        card.style.opacity = '0.5';
-        card.querySelector('.vote-btn')?.remove();
-      }
-      // ✅ تشغيل الصوت المناسب حسب الدور
-      // if (role === 'mafia') {
-      //   playSound('kickCitizenSound');
-      // } else {
-      //   playSound('kickMafiaSound');
-      // }
-    });
-    document.addEventListener("visibilitychange", () => {
-      if (!socket.connected && document.visibilityState === "visible") {
-        socket.connect(); // إعادة الاتصال عند الرجوع من الخلفية
-      }
-    });
-
-    // ✅ إعدادات المايك والسماعة
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// صنع عناصر التحكم للصوت (مايك/سماعة)
 (function initVoiceUI() {
   const container = document.querySelector('.container') || document.body;
 
@@ -963,17 +886,18 @@
   container.insertBefore(wrap, anchor);
 })();
 
+// حالة الصوت
 let localStream = null;        
 let micOn = false;             
 let speakersOn = true;         
-const peers = {};              
-const peerAudioEls = {};       
+const peers = {};              // peerId -> RTCPeerConnection
+const peerAudioEls = {};       // peerId -> <audio>
 
+// الحصول على المايك
 async function initMic() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     console.log("🎤 مايكروفون جاهز");
-
     Object.values(peers).forEach(pc => {
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     });
@@ -993,9 +917,6 @@ function updateSpeakerIcon() {
   const btn = document.getElementById('speakerButton');
   if (!btn) return;
   btn.textContent = speakersOn ? '🔊' : '🔇';
-}
-function setAllRemoteMuted(muted) {
-  Object.values(peerAudioEls).forEach(a => { a.muted = muted; });
 }
 function createRemoteAudioEl(peerId) {
   let audio = peerAudioEls[peerId];
@@ -1038,7 +959,7 @@ function createPeerConnection(peerId) {
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
-      socket.emit("voice-ice", { roomCode, to: peerId, candidate: e.candidate });
+      socket.emit("voice-ice", { to: peerId, candidate: e.candidate });
     }
   };
 
@@ -1055,19 +976,14 @@ async function callPeer(peerId) {
   const pc = peers[peerId] || createPeerConnection(peerId);
   const offer = await pc.createOffer({ offerToReceiveAudio: true });
   await pc.setLocalDescription(offer);
-  socket.emit('voice-offer', { roomCode, to: peerId, offer });
+  socket.emit('voice-offer', { to: peerId, offer });
 }
 
-// ====== أحداث السيرفر ======
-socket.on('voice-join', ({ roomCode }) => {
-  if (!voiceRooms[roomCode]) voiceRooms[roomCode] = new Set();
-  voiceRooms[roomCode].add(socket.id);
-  socketToVoiceRoom[socket.id] = roomCode;
+// ====== تسيير الأحداث (عميل فقط؛ السيرفر يمررها) ======
 
-  const peers = Array.from(voiceRooms[roomCode]).filter(id => id !== socket.id);
-  io.to(socket.id).emit('voice-peers', { ids: peers });
-
-  socket.to(roomCode).emit('voice-peer-joined', { id: socket.id });
+// عند اتصال Socket.IO نعلن الانضمام لغرفة الصوت
+socket.on('connect', () => {
+  if (roomCode) socket.emit('voice-join', { roomCode });
 });
 
 // استقبل قائمة الموجودين
@@ -1079,7 +995,6 @@ socket.on('voice-peers', async ({ ids }) => {
 
 // لاعب جديد انضم
 socket.on("voice-peer-joined", ({ id }) => {
-  console.log("🎤 لاعب جديد:", id);
   callPeer(id);
 });
 
@@ -1089,7 +1004,7 @@ socket.on("voice-offer", async ({ from, offer }) => {
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
   const answer = await pc.createAnswer({ offerToReceiveAudio: true });
   await pc.setLocalDescription(answer);
-  socket.emit("voice-answer", { roomCode, to: from, answer });
+  socket.emit("voice-answer", { to: from, answer });
 });
 
 // استقبل جواب (answer)
@@ -1097,9 +1012,10 @@ socket.on('voice-answer', async ({ from, answer }) => {
   const pc = peers[from];
   if (pc && answer) {
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    Object.values(peerAudioEls).forEach(a => {
-      if (speakersOn) a.play().catch(()=>{});
-    });
+    // حاول تشغيل الصوت إن كان مكبّر الصوت On
+    if (speakersOn) {
+      Object.values(peerAudioEls).forEach(a => a.play().catch(()=>{}));
+    }
   }
 });
 
@@ -1116,7 +1032,7 @@ socket.on('voice-peer-left', ({ id }) => {
   removePeer(id);
 });
 
-// ====== أزرار ======
+// ====== أزرار الصوت ======
 document.getElementById('micButton')?.addEventListener('click', async () => {
   try {
     if (!localStream) {
@@ -1138,28 +1054,26 @@ document.getElementById('micButton')?.addEventListener('click', async () => {
     alert('تأكد أنك سمحت للمتصفح بالوصول للمايكروفون.');
   }
 });
+
 document.getElementById('speakerButton')?.addEventListener('click', () => {
   speakersOn = !speakersOn;
   updateSpeakerIcon();
   Object.values(peerAudioEls).forEach(a => {
     a.muted = !speakersOn;
-    if (speakersOn) {
-      a.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
-    }
+    if (speakersOn) a.play().catch(()=>{});
   });
 });
+
 updateMicIcon();
 updateSpeakerIcon();
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && socket && !socket.connected) {
     socket.connect();
-    socket.emit('voice-join', { roomCode, playerName });
   }
 });
+</script>
 
-
-  </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
   <audio id="kickSound" src="sounds/kick.mp3"></audio>
   <audio id="giftSound" src="sounds/gift.mp3"></audio>
