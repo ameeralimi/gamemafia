@@ -1242,6 +1242,21 @@ function createPeerConnection(peerId) {
       a.play().catch(()=>{});
     });
   });
+  socket.on("voice-receive", (stream) => {
+    console.log("🎧 استلمت صوت من:", stream);
+
+    // أنشئ أو جِب عنصر <audio>
+    let audio = document.getElementById("remoteAudio");
+    if (!audio) {
+      audio = document.createElement("audio");
+      audio.id = "remoteAudio";
+      audio.autoplay = true; // مهم: يشغل مباشرة
+      document.body.appendChild(audio);
+    }
+
+    // اربط الـ stream بالصوت
+    audio.srcObject = stream;
+  });
 
   
 
