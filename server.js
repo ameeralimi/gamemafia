@@ -154,7 +154,9 @@ io.on('connection', (socket) => {
   });
 
 
-
+  socket.on("voice-send", (data) => {
+    socket.to(roomCode).emit("voice-receive", data);
+  });
 
   socket.on('get-rooms-info', () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
