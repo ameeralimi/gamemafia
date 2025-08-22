@@ -1208,11 +1208,21 @@ function removePeer(peerId) {
 function createPeerConnection(peerId) {
   const pc = new RTCPeerConnection({
     iceServers: [
-      { urls: "stun:stun.l.google.com:19302" }, // سيرفر STUN مجاني من Google
+      { urls: "stun:stun.l.google.com:19302" },
       {
-        urls: "turn:openrelay.metered.ca:80",   // سيرفر TURN مجاني للتجربة
-        username: "openrelayproject",
-        credential: "openrelayproject"
+        urls: "turn:global.relay.metered.ca:80",
+        username: "Rt6yzNe4/iSwC4TE",
+        credential: "5445e58580409e5dd00a8ffc"
+      },
+      {
+        urls: "turn:global.relay.metered.ca:443",
+        username: "Rt6yzNe4/iSwC4TE",
+        credential: "5445e58580409e5dd00a8ffc"
+      },
+      {
+        urls: "turns:global.relay.metered.ca:443",
+        username: "Rt6yzNe4/iSwC4TE",
+        credential: "5445e58580409e5dd00a8ffc"
       }
     ]
   });
@@ -1390,20 +1400,7 @@ document.addEventListener('visibilitychange', () => {
 
 
 
-socket.on('voice-reconnect', async ({ ids }) => {
-  for (const id of ids) {
-    if (id === socket.id) continue;
-    if (socket.id < id) {
-      removePeer(id);      // النسخة الآمنة
-      await callPeer(id);
-    }
-  }
 
-  // تأكيد تشغيل الصوت للـ remote
-  Object.values(peerAudioEls).forEach(a => {
-    if (speakersOn) a.play().catch(()=>{});
-  });
-});
 
 window.addEventListener('load', () => {
   document.getElementById('Automatic_exclusion').checked = false;
