@@ -1229,6 +1229,7 @@ function createPeerConnection(peerId) {
   };
 
   pc.ontrack = (e) => {
+    console.log("🎧 استلمت صوت من:", peerId, e.streams);
     const audio = createRemoteAudioEl(peerId);
     audio.srcObject = e.streams[0];
     audio.autoplay = true;
@@ -1236,6 +1237,13 @@ function createPeerConnection(peerId) {
     audio.muted = !speakersOn; 
     audio.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
   };
+  document.body.addEventListener('click', () => {
+    Object.values(peerAudioEls).forEach(a => {
+      a.play().catch(()=>{});
+    });
+  });
+
+  
 
   pc.onconnectionstatechange = () => {
     if (['failed','disconnected','closed'].includes(pc.connectionState)) {
