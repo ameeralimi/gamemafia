@@ -84,19 +84,22 @@ io.on('connection', (socket) => {
       rooms[roomCode].hostName = playerName;
     }
 
-    // إضافة/تحديث اللاعب بدون تكرار
-    let player = rooms[roomCode].players.find(p => p.id === socket.id);
+    // تحقق إذا اللاعب موجود
+    const exists = rooms[roomCode].players.some(p => p.id === socket.id);
 
-    if (player) {
-      player.status = 'online';
-      player.name = playerName;
-    } else {
+    if (!exists) {
+      // لو جديد نضيفه فقط
       rooms[roomCode].players.push({ 
         name: playerName, 
         status: 'online', 
         id: socket.id, 
         isHost: socket.id === rooms[roomCode].hostId  
       });
+    } else {
+      // لو موجود نحدّث حالته فقط
+      rooms[roomCode].players = rooms[roomCode].players.map(p =>
+        p.id === socket.id ? { ...p, status: 'online', name: playerName } : p
+      );
     }
 
     // تحديث حالة الهوست
@@ -106,6 +109,7 @@ io.on('connection', (socket) => {
 
     io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
+
 
 
 
@@ -128,7 +132,16 @@ io.on('connection', (socket) => {
         players.set(playerId, playerData);
 
         socket.join(roomCode);
+
+        // تحديث بياناته داخل room.players
+        rooms[roomCode].players = rooms[roomCode].players.map(p =>
+          p.id === playerData.socketId
+            ? { ...p, name: playerName, status: "online", id: socket.id }
+            : p
+        );
+
         socket.emit("rejoin-game");
+        io.to(roomCode).emit("update-players", rooms[roomCode].players);
         return;
       }
     }
@@ -138,7 +151,12 @@ io.on('connection', (socket) => {
     players.set(newPlayerId, { roomCode, socketId: socket.id });
 
     const playerInfo = { name: playerName, status: "online", id: socket.id };
-    rooms[roomCode].players.push(playerInfo);
+
+    // ✅ تحقق إذا اللاعب مش موجود أصلاً
+    const exists = rooms[roomCode].players.some(p => p.name === playerName);
+    if (!exists) {
+      rooms[roomCode].players.push(playerInfo);
+    }
 
     socket.join(roomCode);
 
@@ -148,6 +166,7 @@ io.on('connection', (socket) => {
     // حدث القائمة عند الكل
     io.to(roomCode).emit("update-players", rooms[roomCode].players);
   });
+
 
   socket.on('player-join-room', ({ playerName, roomCode }) => {
     const room = rooms[roomCode];
