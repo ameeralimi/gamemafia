@@ -7,6 +7,7 @@ const roomCode = getCookie('roomCode'); // الحصول على كود الطاو
 const isHost = getCookie('isHost') === 'true'; // هل اللاعب هو الذي أنشأ الطاولة
 let playersVoted = new Set(); // عدد المصوتين
 let eliminatedPlayers = new Set(); // لتتبع اللاعبين الذين تم إقصاؤهم
+document.getElementById('playerName').textContent = playerName;
 document.getElementById('tableCodeDisplay').textContent = roomCode; // رقم الطاولة
 document.getElementById('roundNum').textContent = getCookie('round') || '1'; // الجولة
 const role = getCookie('role');  // الحصول على الدور الخاص باللاعب
@@ -453,6 +454,8 @@ socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
     // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
     window.addEventListener("load", () => {
         micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+        micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+        spkBtn.click(); // كأن المستخدم ضغط على زر السماعة
     });
 })();
 let localStream = null; // تدفق المايك
