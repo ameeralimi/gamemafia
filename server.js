@@ -60,13 +60,12 @@ io.on('connection', (socket) => {
   console.log('🔌 مستخدم جديد متصل:', socket.id);
 
   // ------------- منطق إنشاء الطاولة والانضمام -------------
+  // إنشاء الغرفة
   socket.on('create-room', ({ playerName, mafiaCount, roomCode }) => {
-    socket.join(roomCode);
-
     if (!rooms[roomCode]) {
       rooms[roomCode] = {
-        hostId: null,
-        hostName: null,
+        hostId: socket.id,
+        hostName: playerName,
         mafiaCount,
         players: [],
         started: false,
@@ -78,34 +77,12 @@ io.on('connection', (socket) => {
       };
     }
 
-    // أول لاعب هو الهوست
-    if (!rooms[roomCode].hostId) {
-      rooms[roomCode].hostId = socket.id;
-      rooms[roomCode].hostName = playerName;
-    }
-
-    // توليد playerId ثابت
-    const newPlayerId = uuidv4();
-    players.set(newPlayerId, { roomCode, socketId: socket.id });
-
-    const playerInfo = {
-      playerId: newPlayerId,        // 🟢 ثابت
-      name: playerName,
-      status: 'online',
-      id: socket.id,
-      isHost: socket.id === rooms[roomCode].hostId
-    };
-
-    rooms[roomCode].players.push(playerInfo);
-
-    socket.emit("joined-as-player", { playerId: newPlayerId });
-    io.to(roomCode).emit('update-players', rooms[roomCode].players);
+    // رجّع للعميل انه هو الهوست
+    socket.emit("room-created", { roomCode, isHost: true });
   });
 
 
-
-
-
+  // الانضمام للغرفة
   socket.on("join-room", ({ playerName, roomCode, playerId }) => {
     if (!rooms[roomCode]) {
       socket.emit("room-not-found");
@@ -117,13 +94,11 @@ io.on('connection', (socket) => {
       const playerData = players.get(playerId);
 
       if (playerData.roomCode === roomCode) {
-        // حدّث socket.id
         playerData.socketId = socket.id;
         players.set(playerId, playerData);
 
         socket.join(roomCode);
 
-        // ✅ حدث بياناته داخل مصفوفة اللاعبين
         rooms[roomCode].players = rooms[roomCode].players.map(p =>
           p.playerId === playerId
             ? { ...p, name: playerName, status: "online", id: socket.id }
@@ -141,19 +116,21 @@ io.on('connection', (socket) => {
     players.set(newPlayerId, { roomCode, socketId: socket.id });
 
     const playerInfo = {
-      playerId: newPlayerId,    // 🟢 لازم ينحفظ
+      playerId: newPlayerId,
       name: playerName,
       status: "online",
-      id: socket.id
+      id: socket.id,
+      isHost: socket.id === rooms[roomCode].hostId // ✅ تحديد الهوست هنا
     };
 
     rooms[roomCode].players.push(playerInfo);
 
     socket.join(roomCode);
 
-    socket.emit("joined-as-player", { playerId: newPlayerId });
+    socket.emit("joined-as-player", { playerId: newPlayerId, isHost: playerInfo.isHost });
     io.to(roomCode).emit("update-players", rooms[roomCode].players);
   });
+
 
 
 
