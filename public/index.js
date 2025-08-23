@@ -31,25 +31,34 @@ socket.on('rooms-info', rooms => {
     const list = document.getElementById('roomsList');
     list.innerHTML = '';
 
-    // فقط الطاولات التي لم تبدأ بعد
-    const availableRooms = rooms.filter(room => !room.started);
+    // فلترة: فقط الغرف اللي الـ host موجود فيها
+    const activeRooms = rooms.filter(room => room.hostOnline);
 
-    if (availableRooms.length === 0) {
-    const msg = document.createElement('div');
-    msg.textContent = 'لا توجد طاولات متاحة حالياً.';
-    msg.style.marginTop = '10px';
-    list.appendChild(msg);
-    return;
+    if (activeRooms.length === 0) {
+        const msg = document.createElement('div');
+        msg.textContent = 'لا توجد طاولات متاحة حالياً.';
+        msg.style.marginTop = '10px';
+        list.appendChild(msg);
+        return;
     }
 
-    availableRooms.forEach(room => {
-    const btn = document.createElement('button');
-    btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - في انتظار اللاعبين`;
-    btn.style.margin = '5px';
-    btn.onclick = () => {
-        document.getElementById('roomIdField').value = room.roomCode;
-    };
-    list.appendChild(btn);
+    activeRooms.forEach(room => {
+        const btn = document.createElement('button');
+        
+        if (!room.started) {
+            // الغرفة لسا ما بدأت
+            btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - في انتظار اللاعبين`;
+        } else {
+            // الغرفة بدأت
+            btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - لقد بدأت اللعبة (الدخول كمشاهد)`;
+        }
+
+        btn.style.margin = '5px';
+        btn.onclick = () => {
+            document.getElementById('roomIdField').value = room.roomCode;
+        };
+
+        list.appendChild(btn);
     });
 });
 function showCreateRoom() {
