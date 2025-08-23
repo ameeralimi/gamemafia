@@ -65,8 +65,8 @@ io.on('connection', (socket) => {
 
     if (!rooms[roomCode]) {
       rooms[roomCode] = {
-        hostId: null,            // ← socket.id للهوست
-        hostName: null,          // ← الاسم (اختياري بس للتوضيح)
+        hostId: null,            
+        hostName: null,          
         mafiaCount,
         players: [],
         started: false,
@@ -78,20 +78,28 @@ io.on('connection', (socket) => {
       };
     }
 
+    // لو ما في هوست مسجل، نخلي اللي أنشأ هو الهوست
     if (!rooms[roomCode].hostId) {
-      rooms[roomCode].hostId = socket.id;   // ← نخزن socket.id
-      rooms[roomCode].hostName = playerName; // ← نخزن اسم الهوست
+      rooms[roomCode].hostId = socket.id;
+      rooms[roomCode].hostName = playerName;
     }
 
+    // نضيف اللاعب (ونحدد حالة الهوست)
     rooms[roomCode].players.push({ 
       name: playerName, 
       status: 'online', 
       id: socket.id, 
-      isHost: socket.id === rooms[roomCode].hostId  // نحدد إذا هو الهوست
+      isHost: socket.id === rooms[roomCode].hostId  
     });
+
+    // تحديث حالة الهوست بشكل واضح
+    if (socket.id === rooms[roomCode].hostId) {
+      rooms[roomCode].hostStatus = 'online';   // ← جديدة
+    }
 
     io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
+
 
 
   socket.on("join-room", ({ playerName, roomCode, playerId }) => {
@@ -205,16 +213,17 @@ io.on('connection', (socket) => {
 
   socket.on("get-rooms-info", () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => {
-      // نحدد اللاعب الهوست
+      // نجيب الهوست من قائمة اللاعبين
       const hostPlayer = room.players.find(p => p.isHost);
-      const hostOnline = hostPlayer && hostPlayer.status === "online";
+      const hostOnline = hostPlayer && hostPlayer.status === "online"; // ← من update-players
+      const hostPage = room.hostPage || "host"; // ← من host-status
 
       let statusMessage = "❌ الطاولة غير متاحة";
 
       if (hostOnline) {
-        if (room.started && room.hostPage === "game") {
+        if (room.started && hostPage === "game") {
           statusMessage = "✅ لقد بدأت اللعبة - الدخول كمشاهد";
-        } else if (!room.started && room.hostPage === "host") {
+        } else if (!room.started && hostPage === "host") {
           statusMessage = "⏳ في انتظار اللاعبين";
         }
       }
@@ -229,6 +238,7 @@ io.on('connection', (socket) => {
 
     socket.emit("rooms-info", roomsInfo);
   });
+
 
 
 
