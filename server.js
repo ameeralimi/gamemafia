@@ -232,6 +232,7 @@ io.on('connection', (socket) => {
         roomCode: code,
         playerCount: room.players.length,
         started: room.started,
+        hostOnline,      // ← أضفناها
         statusMessage
       };
     });
