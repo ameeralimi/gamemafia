@@ -205,13 +205,9 @@ io.on('connection', (socket) => {
 
   socket.on("get-rooms-info", () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => {
-      let hostOnline = false;
-
-      // نبحث عن المضيف داخل قائمة اللاعبين
-      const hostPlayer = room.players.find(p => p.name === room.host);
-      if (hostPlayer && hostPlayer.status === "online") {
-        hostOnline = true;
-      }
+      // نحدد اللاعب الهوست
+      const hostPlayer = room.players.find(p => p.isHost);
+      const hostOnline = hostPlayer && hostPlayer.status === "online";
 
       let statusMessage = "❌ الطاولة غير متاحة";
 
@@ -227,13 +223,13 @@ io.on('connection', (socket) => {
         roomCode: code,
         playerCount: room.players.length,
         started: room.started,
-        hostOnline,
         statusMessage
       };
     });
 
     socket.emit("rooms-info", roomsInfo);
   });
+
 
 
 
