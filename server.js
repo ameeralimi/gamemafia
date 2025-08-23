@@ -65,7 +65,8 @@ io.on('connection', (socket) => {
 
     if (!rooms[roomCode]) {
       rooms[roomCode] = {
-        host: null,
+        hostId: null,            // ← socket.id للهوست
+        hostName: null,          // ← الاسم (اختياري بس للتوضيح)
         mafiaCount,
         players: [],
         started: false,
@@ -77,14 +78,21 @@ io.on('connection', (socket) => {
       };
     }
 
-    if (!rooms[roomCode].host) {
-      rooms[roomCode].host = playerName;
+    if (!rooms[roomCode].hostId) {
+      rooms[roomCode].hostId = socket.id;   // ← نخزن socket.id
+      rooms[roomCode].hostName = playerName; // ← نخزن اسم الهوست
     }
 
-    rooms[roomCode].players.push({ name: playerName, status: 'online', id: socket.id });
+    rooms[roomCode].players.push({ 
+      name: playerName, 
+      status: 'online', 
+      id: socket.id, 
+      isHost: socket.id === rooms[roomCode].hostId  // نحدد إذا هو الهوست
+    });
 
     io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
+
 
   socket.on("join-room", ({ playerName, roomCode, playerId }) => {
     // 🟥 1. الغرفة غير موجودة
@@ -193,10 +201,15 @@ io.on('connection', (socket) => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
       roomCode: code,
       playerCount: room.players.length,
-      started: room.started
+      started: room.started,
+      hostOnline: room.hostId ? io.sockets.sockets.has(room.hostId) : false,
+      hostName: room.hostName
     }));
+
     socket.emit('rooms-info', roomsInfo);
   });
+
+
 
   // ------------- الدردشة والهدايا -------------
   socket.on('chat-message', ({ roomCode, playerName, message }) => {
