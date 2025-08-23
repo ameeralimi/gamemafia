@@ -708,6 +708,7 @@
       });
       // 🟢 تحديث قائمة اللاعبين
       const list = document.getElementById('playersList');
+      list.innerHTML = "";
       players.forEach(player => {
         const statusClass =
           player.status === 'online' ? 'online'
@@ -779,7 +780,6 @@
         const section = document.getElementById('transferHostSection');
         const list = document.getElementById('transferList');
         section.style.display = 'block';
-        list.innerHTML = '';
         players.forEach(p => {
           if (p.name === playerName) return;
           const btn = document.createElement('button');
@@ -817,7 +817,6 @@
       if (transferSection) {
         transferSection.style.display = 'block';
         const list = document.getElementById('transferList');
-        list.innerHTML = ''; // تنظيف الأزرار القديمة
 
         // ✅ إعادة توليد أزرار التعيين
         socket.emit('player-join-room', { playerName, roomCode }); // هذا سيجعل السيرفر يعيد إرسال اللاعبين
