@@ -195,19 +195,36 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('update-players', room.players);
   });
 
-
-
-  socket.on('get-rooms-info', () => {
-    const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
-      roomCode: code,
-      playerCount: room.players.length,
-      started: room.started,
-      hostOnline: room.hostId ? io.sockets.sockets.has(room.hostId) : false,
-      hostName: room.hostName
-    }));
-
-    socket.emit('rooms-info', roomsInfo);
+  socket.on("host-status", ({ roomCode, page }) => {
+    if (rooms[roomCode] && rooms[roomCode].hostId === socket.id) {
+      rooms[roomCode].hostPage = page; // "host" أو "game"
+    }
   });
+
+
+
+  socket.on("get-rooms-info", () => {
+    const roomsInfo = Object.entries(rooms).map(([code, room]) => {
+      let statusMessage = "❌ الطاولة غير متاحة";
+
+      if (room.hostId && io.sockets.sockets.has(room.hostId)) {
+        if (room.started && room.hostPage === "game") {
+          statusMessage = "✅ لقد بدأت اللعبة - الدخول كمشاهد";
+        } else if (!room.started && room.hostPage === "host") {
+          statusMessage = "⏳ في انتظار اللاعبين";
+        }
+      }
+
+      return {
+        roomCode: code,
+        playerCount: room.players.length,
+        statusMessage
+      };
+    });
+
+    socket.emit("rooms-info", roomsInfo);
+  });
+
 
 
 
