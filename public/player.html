@@ -9,24 +9,14 @@
 </head>
 <body>
   <div class="container">
-    <div class="round-info">
-      <div class="stats">
-        <div class="round-block">
-          <p>👤 مرحباً</p>
-          <strong id="playerName" class="round-value"></strong>
-        </div>
-        <div class="round-block">
-          <p>📛 رقم الطاولة</p>
-          <strong id="roomCode" class="round-value">0000</strong>
-        </div>
-        <div class="stat-block">
-          <p>👥 اللاعبين</p>
-          <strong id="totalPlayers" class="round-value">0</strong>
-        </div>
-      </div>
+    <div class="room-info">
+      <h2>مرحباً، <span id="playerName"></span></h2>
+      <p>رقم الطاولة: <strong id="roomCode"></strong></p>
     </div>
-    <h3>اللاعبون</h3>
+
+    <h3>اللاعبون المتصلون</h3>
     <div class="players" id="playersList"></div>
+
     <div class="chat-section">
       <h4>الدردشة</h4>
       <div id="chatBox"></div>
@@ -35,6 +25,7 @@
         <button id="sendButton" onclick="sendMessage()">إرسال</button>
       </div>
     </div>
+
     <div class="gifts-section">
       <h4>أرسل هدية</h4>
       <select id="giftTarget">
@@ -63,18 +54,468 @@
       </div>
     </div>
     <button onclick="goToHome()" id="backToHomeButton" class="back-button">
-      🔙 رجوع إلى الصفحة الرئيسية
-    </button>
+        🔙 رجوع إلى الصفحة الرئيسية
+      </button>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="player.js"></script>
-  <!-- <script src="Gift.js"></script>
-  <script src="playSound.js"></script>
-  <script src="chat_message.js"></script>
-  <script src="speakers_audio.js"></script> -->
+  <script>
+    function playSound(id) {
+      const enableSounds = document.getElementById('toggleSounds')?.checked;
+      if (!enableSounds) return;
+
+      const audio = document.getElementById(id);
+      if (audio) {
+        audio.currentTime = 0;
+        audio.play();
+      }
+    }
+    function goToHome() {
+        window.location.href = 'index.html';
+    }
+    const socket = io("https://gamemafia.onrender.com", {
+      transports: ["websocket", "polling"]
+    });
+    const playerName = getCookie('playerName');
+    const roomCode = getCookie('roomCode');
+
+    if (!playerName || !roomCode) {
+      window.location.href = 'index.html';
+    }
+
+    document.getElementById('playerName').textContent = playerName;
+    document.getElementById('roomCode').textContent = roomCode;
+
+    socket.emit('player-join-room', { playerName, roomCode });
+
+    socket.on('update-players', players => {
+      const list = document.getElementById('playersList');
+      const targetSelect = document.getElementById('giftTarget');
+      list.innerHTML = '';
+      targetSelect.innerHTML = '<option value="all">لكل اللاعبين</option>';
+
+      players.forEach(player => {
+        const statusClass = player.status === 'online' ? 'online' : player.status === 'idle' ? 'idle' : 'offline';
+        const cardId = `player-${player.name.replace(/\s/g, '-')}`;
+        list.innerHTML += `
+          <div class="player-card" id="${cardId}">
+            <div class="status ${statusClass}"></div>
+            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=${player.name}" />
+            <h4>${player.name}</h4>
+          </div>
+        `;
+        targetSelect.innerHTML += `<option value="${player.name}">${player.name}</option>`;
+      });
+    });
+
+    function sendMessage() {
+      const msg = document.getElementById('chatInput').value.trim();
+      if (!msg) return;
+      socket.emit('chat-message', { roomCode, playerName, message: msg });
+      document.getElementById('chatInput').value = '';
+    }
+
+    document.getElementById('chatInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    socket.on('chat-message', ({ playerName, message }) => {
+      const box = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      div.className = 'chat-message';
+      div.innerHTML = `<strong>${playerName}:</strong> ${message}`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    });
+
+    function sendGift(gift) {
+      const target = document.getElementById('giftTarget').value;
+      socket.emit('send-gift', { roomCode, playerName, gift, target });
+    }
+
+    // داخل دالة استقبال الهدية:
+    socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
+      let recipientList;
+
+      // 🟡 تشغيل الصوت حسب نوع الهدية
+      const giftSounds = {
+        '🌹': 'sound-rose',
+        '🍅': 'sound-tomato',
+        '💣': 'sound-bomb',
+        '🐴': 'sound-donkey',
+        '😢': 'a',
+        '😂': 'b'
+      };
+      const audioId = giftSounds[gift];
+      if (audioId) {
+        playSound(audioId);
+      }
+
+      // 🎯 تحديد المستلمين
+      if (target === 'all') {
+        recipientList = Array.from(document.querySelectorAll('.player-card'));
+      } else {
+        recipientList = [document.getElementById(`card-${target}`)];
+      }
+
+      // ✨ تنفيذ الأنيميشن للهدية
+      recipientList.forEach(card => {
+        if (!card) return;
+        const anim = document.createElement('div');
+        anim.className = 'gift-anim';
+        anim.textContent = gift;
+        card.appendChild(anim);
+        setTimeout(() => anim.remove(), 1000);
+      });
+
+      // 📝 إضافة رسالة إلى الدردشة
+      const box = document.getElementById('chatBox');
+      const div = document.createElement('div');
+      const msg = target === 'all'
+        ? `${sender} أرسل هدية ${gift} للجميع 🎁`
+        : `${sender} أرسل ${gift} إلى ${target}`;
+      div.className = 'chat-message';
+      div.innerHTML = `<em>${msg}</em>`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    });
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    socket.on('game-started', ({ role, roomCode, round }) => {
+      document.cookie = `role=${role}; path=/`;
+      document.cookie = `round=${round}; path=/`;
+      window.location.href = 'game.html';
+    });
+    socket.on('kicked', () => {
+        alert('تم طردك من الغرفة');
+        window.location.href = 'index.html';
+    });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(function initVoiceUI() {
+  const container = document.querySelector('.container') || document.body;
+  const wrap = document.createElement('div');
+  wrap.className = 'voice-controls';
+  wrap.style.cssText = `
+    display:flex; gap:8px; align-items:center; margin:12px 0;
+    padding:8px; border:1px solid #eee; border-radius:12px;
+  `;
+  const micBtn = document.createElement('button');
+  micBtn.id = 'micButton';
+  micBtn.textContent = '🎤'; 
+  micBtn.title = 'تشغيل/إيقاف الميكروفون';
+  micBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
+  const spkBtn = document.createElement('button');
+  spkBtn.id = 'speakerButton';
+  spkBtn.textContent = '🔊'; 
+  spkBtn.title = 'تشغيل/كتم السماعات';
+  spkBtn.style.cssText = 'font-size:18px; padding:8px 12px; border-radius:10px;';
+  const hint = document.createElement('span');
+  hint.textContent = 'المحادثة الصوتية';
+  hint.style.cssText = 'opacity:.8; font-size:14px; margin-inline-start:6px;';
+  wrap.appendChild(micBtn);
+  wrap.appendChild(spkBtn);
+  wrap.appendChild(hint);
+  const anchor = document.querySelector('.players') || container.firstChild;
+  container.insertBefore(wrap, anchor);
+  // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
+  window.addEventListener("load", () => {
+      micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+  });
+})();
+let localStream = null;
+let micOn = false;
+let speakersOn = true;
+const peers = {};
+const peerAudioEls = {};
+function updateMicIcon() {
+  const btn = document.getElementById('micButton');
+  if (!btn) return;
+  btn.textContent = micOn ? '🛑' : '🎤';
+}
+function updateSpeakerIcon() {
+  const btn = document.getElementById('speakerButton');
+  if (!btn) return;
+  btn.textContent = speakersOn ? '🔊' : '🔇';
+}
+function createRemoteAudioEl(peerId) {
+  let audio = peerAudioEls[peerId];
+  if (!audio) {
+    audio = document.createElement('audio');
+    audio.id = `voice-audio-${peerId}`;
+    audio.autoplay = true;
+    audio.playsInline = true; // مهم جدًا للجوال
+    audio.muted = !speakersOn;
+    document.body.appendChild(audio);
+    peerAudioEls[peerId] = audio;
+  }
+  return audio;
+}
+function removePeer(peerId) {
+  try {
+    const pc = peers[peerId];
+    if (pc) {
+      // لا توقف s.track (المحلي)! فقط أغلق الاتصال ونظّف.
+      try {
+        pc.getSenders().forEach(sender => {
+          try { pc.removeTrack(sender); } catch {}
+        });
+      } catch {}
+      pc.onicecandidate = null;
+      pc.ontrack = null;
+      pc.onconnectionstatechange = null;
+      try { pc.close(); } catch {}
+    }
+  } catch {}
+  delete peers[peerId];
+  const audio = peerAudioEls[peerId];
+  if (audio) {
+    try { audio.srcObject = null; } catch {}
+    audio.remove();
+    delete peerAudioEls[peerId];
+  }
+}
+function createPeerConnection(peerId) {
+
+
+  var pc = new RTCPeerConnection({
+    iceServers: [
+        {
+          urls: "stun:stun.relay.metered.ca:80",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:80",
+          username: "5445e58580409e5dd00a8ffc",
+          credential: "Rt6yzNe4/iSwC4TE",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:80?transport=tcp",
+          username: "5445e58580409e5dd00a8ffc",
+          credential: "Rt6yzNe4/iSwC4TE",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:443",
+          username: "5445e58580409e5dd00a8ffc",
+          credential: "Rt6yzNe4/iSwC4TE",
+        },
+        {
+          urls: "turns:global.relay.metered.ca:443?transport=tcp",
+          username: "5445e58580409e5dd00a8ffc",
+          credential: "Rt6yzNe4/iSwC4TE",
+        },
+    ],
+  });
+
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      socket.emit('voice-ice', { roomCode, to: peerId, candidate: e.candidate });
+    }
+  };
+
+  pc.ontrack = (e) => {
+    console.log("🎧 استلمت صوت من:", peerId, e.streams);
+    const audio = createRemoteAudioEl(peerId);
+    audio.srcObject = e.streams[0];
+    audio.autoplay = true;
+    audio.playsInline = true;  // مهم للموبايل
+    audio.muted = !speakersOn; 
+    audio.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
+  };
+  document.body.addEventListener('click', () => {
+    Object.values(peerAudioEls).forEach(a => {
+      a.play().catch(()=>{});
+    });
+  });
+  socket.on("voice-receive", (stream) => {
+    console.log("🎧 استلمت صوت من:", stream);
+
+    // أنشئ أو جِب عنصر <audio>
+    let audio = document.getElementById("remoteAudio");
+    if (!audio) {
+      audio = document.createElement("audio");
+      audio.id = "remoteAudio";
+      audio.autoplay = true; // مهم: يشغل مباشرة
+      document.body.appendChild(audio);
+    }
+
+    // اربط الـ stream بالصوت
+    audio.srcObject = stream;
+  });
+
+  
+
+  pc.onconnectionstatechange = () => {
+    if (['failed','disconnected','closed'].includes(pc.connectionState)) {
+      removePeer(peerId);
+    }
+  };
+
+  peers[peerId] = pc;
+  return pc;
+}
+
+async function callPeer(peerId) {
+  const pc = peers[peerId] || createPeerConnection(peerId);
+  const offer = await pc.createOffer({ offerToReceiveAudio: true });
+  await pc.setLocalDescription(offer);
+  socket.emit('voice-offer', { roomCode, to: peerId, offer });
+}
+
+// عند الدخول للغرفة
+socket.emit('voice-join', { roomCode, playerName });
+
+socket.on('voice-peers', async ({ ids }) => {
+  for (const id of ids) {
+    if (socket.id < id) { // أنا أبدأ فقط لو آي دي تبعي أصغر
+      await callPeer(id);
+    }
+  }
+});
+
+socket.on('voice-peer-joined', async ({ id }) => {
+  // فقط طرف واحد يبادر
+  if (socket.id < id) {
+    // لا توقف الميك داخل removePeer!
+    removePeer(id);
+    await callPeer(id);
+  }
+});
+
+// استقبال اتصال صوتي
+socket.on("voice-offer", async ({ from, offer }) => {
+  const pc = peers[from] || createPeerConnection(from);
+
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await pc.createAnswer({ offerToReceiveAudio: true });
+  await pc.setLocalDescription(answer);
+
+  socket.emit("voice-answer", { roomCode, to: from, answer });
+});
+
+socket.on('voice-answer', async ({ from, answer }) => {
+  const pc = peers[from];
+  if (pc && answer) {
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+    // أعد تشغيل الأصوات للتأكد
+    Object.values(peerAudioEls).forEach(a => {
+      if (speakersOn) a.play().catch(()=>{});
+    });
+  }
+});
+
+
+socket.on('voice-ice', async ({ from, candidate }) => {
+  const pc = peers[from];
+  if (pc && candidate) {
+    try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+  }
+});
+
+socket.on('voice-peer-left', ({ id }) => {
+  removePeer(id);
+});
+
+// زر الميكروفون
+document.getElementById('micButton')?.addEventListener('click', async () => {
+  try {
+    if (!localStream) {
+      // طلب إذن المايك أول مرة
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micOn = true;
+
+      // أضف الصوت لكل اتصال مفتوح
+      Object.values(peers).forEach(pc => {
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+          track.enabled = true; // تأكد انه شغال
+        });
+      });
+
+      console.log("🎤 الميكروفون اشتغل على الهاتف/الكمبيوتر");
+    } else {
+      // تشغيل/إيقاف المايك
+      micOn = !micOn;
+      localStream.getTracks().forEach(track => track.enabled = micOn);
+    }
+
+    updateMicIcon();
+  } catch (err) {
+    console.error('فشل تشغيل الميكروفون:', err);
+    alert('تأكد أنك سمحت للمتصفح بالوصول للمايكروفون.');
+  }
+});
+
+
+// زر السماعة
+document.getElementById('speakerButton')?.addEventListener('click', () => {
+  speakersOn = !speakersOn;
+  updateSpeakerIcon();
+
+  Object.values(peerAudioEls).forEach(a => {
+    a.muted = !speakersOn;
+    if (speakersOn) {
+      a.play().catch(err => console.warn("فشل تشغيل الصوت:", err));
+    }
+  });
+});
+
+
+updateMicIcon();
+updateSpeakerIcon();
+
+// إعادة الاتصال عند الرجوع للصفحة
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && socket && !socket.connected) {
+    socket.connect();
+    socket.emit('voice-join', { roomCode, playerName });
+  }
+});
+
+
+
+
+
+window.addEventListener('load', () => {
+  document.getElementById('Automatic_exclusion').checked = false;
+});
+  </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
   <audio id="kickSound" src="sounds/kick.mp3"></audio>
   <audio id="giftSound" src="sounds/gift.mp3"></audio>
+
   <audio id="sound-rose" src="sounds/rose.mp3"></audio>
   <audio id="sound-tomato" src="sounds/rose.mp3"></audio>
   <audio id="sound-bomb" src="sounds/bomb.mp3"></audio>
