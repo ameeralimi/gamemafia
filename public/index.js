@@ -28,34 +28,30 @@ function refreshRooms() {
 }
 
 socket.on('rooms-info', rooms => {
-    console.log("📥 Data from server:", rooms);
     const list = document.getElementById('roomsList');
     list.innerHTML = '';
 
-    // الفلترة: فقط الغرف اللي الرسالة مو "❌ الطاولة غير متاحة"
-    const activeRooms = rooms.filter(room => room.hostOnline);
+    // فقط الطاولات التي لم تبدأ بعد
+    const availableRooms = rooms.filter(room => !room.started);
 
-    if (activeRooms.length === 0) {
-        const msg = document.createElement('div');
-        msg.textContent = 'لا توجد طاولات متاحة حالياً.';
-        msg.style.marginTop = '10px';
-        list.appendChild(msg);
-        return;
+    if (availableRooms.length === 0) {
+    const msg = document.createElement('div');
+    msg.textContent = 'لا توجد طاولات متاحة حالياً.';
+    msg.style.marginTop = '10px';
+    list.appendChild(msg);
+    return;
     }
 
-    activeRooms.forEach(room => {
-        const btn = document.createElement('button');
-        btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - ${room.statusMessage}`;
-        btn.style.margin = '5px';
-        btn.onclick = () => {
-            document.getElementById('roomIdField').value = room.roomCode;
-        };
-
-        list.appendChild(btn);
+    availableRooms.forEach(room => {
+    const btn = document.createElement('button');
+    btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - في انتظار اللاعبين`;
+    btn.style.margin = '5px';
+    btn.onclick = () => {
+        document.getElementById('roomIdField').value = room.roomCode;
+    };
+    list.appendChild(btn);
     });
 });
-
-
 function showCreateRoom() {
     const name = document.getElementById('playerName').value.trim();
     if (!name) {
@@ -111,56 +107,21 @@ function createRoom() {
 function joinRoom() {
     const name = document.getElementById('playerName').value.trim();
     const roomCode = document.getElementById('roomIdField').value.trim();
-
     if (!name) {
-        showToast('يرجى إدخال اسمك');
-        return;
+    showToast('يرجى إدخال اسمك');
+    return;
     }
     if (!roomCode || roomCode.length !== 4 || isNaN(roomCode)) {
-        showToast('يرجى إدخال رقم طاولة صحيح (4 أرقام)');
-        return;
+    showToast('يرجى إدخال رقم طاولة صحيح (4 أرقام)');
+    return;
     }
-
-    // نخزن البيانات في الكوكيز
     document.cookie = `playerName=${name}`;
     document.cookie = `roomCode=${roomCode}`;
     document.cookie = `isHost=false`;
 
-    // لو اللاعب عنده playerId من قبل (عشان يعرف إذا قديم)
-    const playerId = localStorage.getItem("playerId");
-
-    // نرسل طلب الانضمام للسيرفر
-    socket.emit("join-room", { playerName: name, roomCode, playerId });
+    socket.emit('join-room', { playerName: name, roomCode });
+    window.location.href = 'player.html';
 }
-
-socket.on("room-created", ({ roomCode, isHost }) => {
-    if (isHost) {
-        window.location.href = `/host.html?room=${roomCode}`;
-    }
-});
-
-// لاعب جديد
-socket.on("joined-as-player", ({ playerId, isHost }) => {
-    localStorage.setItem("playerId", playerId);
-
-    if (isHost) {
-        window.location.href = `/host.html?room=${roomCode}`;
-    } else {
-        window.location.href = `/player.html?room=${roomCode}`;
-    }
-});
-
-
-// لاعب قديم (كان في نفس الغرفة)
-socket.on("rejoin-game", () => {
-    window.location.href = "game.html";
-});
-
-// الغرفة مش موجودة
-socket.on("room-not-found", () => {
-    showToast("❌ الطاولة غير موجودة");
-});
-
 
 const nameInput = document.getElementById('playerName');
 
