@@ -60,57 +60,46 @@ io.on('connection', (socket) => {
   console.log('🔌 مستخدم جديد متصل:', socket.id);
 
   // ------------- منطق إنشاء الطاولة والانضمام -------------
-  socket.on("join-room", ({ playerName, roomCode, playerId }) => {
+  socket.on('create-room', ({ playerName, mafiaCount, roomCode }) => {
+    socket.join(roomCode);
+
     if (!rooms[roomCode]) {
-      socket.emit("room-not-found");
-      return;
+      rooms[roomCode] = {
+        hostId: null,
+        hostName: null,
+        mafiaCount,
+        players: [],
+        started: false,
+        votes: {},
+        round: 1,
+        roles: {},
+        kickedPlayers: [],
+        showVoteMessages: true
+      };
     }
 
-    let currentPlayerId = playerId;
-
-    // لو قديم
-    if (playerId && players.has(playerId)) {
-      const playerData = players.get(playerId);
-      if (playerData.roomCode === roomCode) {
-        playerData.socketId = socket.id;
-        players.set(playerId, playerData);
-        socket.join(roomCode);
-
-        // ✅ تحديث بيانات اللاعب داخل room.players حسب الـ playerId
-        rooms[roomCode].players = rooms[roomCode].players.map(p =>
-          p.playerId === playerId
-            ? { ...p, id: socket.id, status: "online", name: playerName }
-            : p
-        );
-
-        socket.emit("rejoin-game", { playerId });
-        io.to(roomCode).emit("update-players", rooms[roomCode].players);
-        return;
-      }
+    // أول لاعب هو الهوست
+    if (!rooms[roomCode].hostId) {
+      rooms[roomCode].hostId = socket.id;
+      rooms[roomCode].hostName = playerName;
     }
 
-    // لاعب جديد
+    // توليد playerId ثابت
     const newPlayerId = uuidv4();
-    currentPlayerId = newPlayerId;
     players.set(newPlayerId, { roomCode, socketId: socket.id });
 
     const playerInfo = {
-      playerId: newPlayerId, // 🟢 هوية ثابتة
+      playerId: newPlayerId,        // 🟢 ثابت
       name: playerName,
-      status: "online",
-      id: socket.id
+      status: 'online',
+      id: socket.id,
+      isHost: socket.id === rooms[roomCode].hostId
     };
 
-    // ✅ أضف فقط إذا غير موجود
-    const exists = rooms[roomCode].players.some(p => p.playerId === newPlayerId);
-    if (!exists) {
-      rooms[roomCode].players.push(playerInfo);
-    }
-
-    socket.join(roomCode);
+    rooms[roomCode].players.push(playerInfo);
 
     socket.emit("joined-as-player", { playerId: newPlayerId });
-    io.to(roomCode).emit("update-players", rooms[roomCode].players);
+    io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
 
 
@@ -123,17 +112,18 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // لو اللاعب قديم
+    // لو اللاعب قديم عنده playerId
     if (playerId && players.has(playerId)) {
       const playerData = players.get(playerId);
 
       if (playerData.roomCode === roomCode) {
+        // حدّث socket.id
         playerData.socketId = socket.id;
         players.set(playerId, playerData);
 
         socket.join(roomCode);
 
-        // ✅ التحديث يكون بالـ playerId مش socket.id
+        // ✅ حدث بياناته داخل مصفوفة اللاعبين
         rooms[roomCode].players = rooms[roomCode].players.map(p =>
           p.playerId === playerId
             ? { ...p, name: playerName, status: "online", id: socket.id }
@@ -146,12 +136,12 @@ io.on('connection', (socket) => {
       }
     }
 
-    // لاعب جديد
+    // 🆕 لاعب جديد
     const newPlayerId = uuidv4();
     players.set(newPlayerId, { roomCode, socketId: socket.id });
 
     const playerInfo = {
-      playerId: newPlayerId,  // 🟢 هوية ثابتة
+      playerId: newPlayerId,    // 🟢 لازم ينحفظ
       name: playerName,
       status: "online",
       id: socket.id
@@ -164,6 +154,7 @@ io.on('connection', (socket) => {
     socket.emit("joined-as-player", { playerId: newPlayerId });
     io.to(roomCode).emit("update-players", rooms[roomCode].players);
   });
+
 
 
 
