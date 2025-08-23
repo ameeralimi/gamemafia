@@ -206,8 +206,10 @@ io.on('connection', (socket) => {
   socket.on("get-rooms-info", () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => {
       let statusMessage = "❌ الطاولة غير متاحة";
+      let hostOnline = false;
 
       if (room.hostId && io.sockets.sockets.has(room.hostId)) {
+        hostOnline = true;
         if (room.started && room.hostPage === "game") {
           statusMessage = "✅ لقد بدأت اللعبة - الدخول كمشاهد";
         } else if (!room.started && room.hostPage === "host") {
@@ -218,12 +220,15 @@ io.on('connection', (socket) => {
       return {
         roomCode: code,
         playerCount: room.players.length,
+        started: room.started,
+        hostOnline,
         statusMessage
       };
     });
 
     socket.emit("rooms-info", roomsInfo);
   });
+
 
 
 
