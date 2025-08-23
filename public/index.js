@@ -28,6 +28,7 @@ function refreshRooms() {
 }
 
 socket.on('rooms-info', rooms => {
+    console.log("📥 Data from server:", rooms);
     const list = document.getElementById('roomsList');
     list.innerHTML = '';
 
