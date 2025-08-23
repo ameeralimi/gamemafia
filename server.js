@@ -158,57 +158,31 @@ io.on('connection', (socket) => {
 
 
 
-  socket.on('player-join-room', ({ playerName, roomCode }) => {
+  socket.on('player-join-room', ({ playerId, playerName, roomCode }) => {
     const room = rooms[roomCode];
     if (!room) return;
 
-    // 🛑 لو كان مطرود → يدخل كمشاهد
-    if (room.kickedPlayers.includes(playerName)) {
-      let player = room.players.find((p) => p.name === playerName);
-      if (player) {
-        player.status = 'online';
-        player.id = socket.id;
-        player.spectator = true;
-      } else {
-        room.players.push({
-          name: playerName,
-          status: 'online',
-          id: socket.id,
-          spectator: true
-        });
-      }
-      socket.join(roomCode);
-      io.to(roomCode).emit('update-players', room.players);
-      return;
-    }
-
     let isSpectator = false;
 
-    // 🟢 التحقق من gameId إذا اللعبة بدأت
+    // 🟢 لو اللعبة بدأت
     if (room.started) {
-      let existed = room.players.find((p) => p.name === playerName);
-
-      if (existed) {
-        // إذا كان عنده نفس الـ gameId → لاعب
-        if (existed.gameId !== room.currentGameId) {
-          isSpectator = true;
-        }
-      } else {
-        // لاعب جديد يدخل بعد بداية اللعبة → مشاهد
-        isSpectator = true;
-      }
+      let existed = room.players.find((p) => p.playerId === playerId);
+      if (!existed) isSpectator = true;
     }
 
-    // 🔄 لو اللاعب موجود أصلاً
-    let player = room.players.find((p) => p.name === playerName);
+    // 🔄 ابحث بالـ playerId مش بالاسم
+    let player = room.players.find((p) => p.playerId === playerId);
 
     if (player) {
+      // حدث بياناته فقط
       player.status = 'online';
       player.id = socket.id;
+      player.name = playerName; // لو غير اسمه
       if (isSpectator) player.spectator = true;
     } else {
       // ➕ لاعب جديد
       room.players.push({
+        playerId,
         name: playerName,
         status: 'online',
         id: socket.id,
@@ -219,6 +193,7 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     io.to(roomCode).emit('update-players', room.players);
   });
+
 
   socket.on("host-status", ({ roomCode, page }) => {
     if (rooms[roomCode] && rooms[roomCode].hostId === socket.id) {
