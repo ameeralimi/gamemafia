@@ -33,7 +33,7 @@ socket.on('rooms-info', rooms => {
     list.innerHTML = '';
 
     // الفلترة: فقط الغرف اللي الرسالة مو "❌ الطاولة غير متاحة"
-    const activeRooms = rooms.filter(room => room.statusMessage !== "❌ الطاولة غير متاحة");
+    const activeRooms = rooms.filter(room => room.hostOnline);
 
     if (activeRooms.length === 0) {
         const msg = document.createElement('div');
