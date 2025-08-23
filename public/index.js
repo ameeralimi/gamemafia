@@ -133,11 +133,23 @@ function joinRoom() {
     socket.emit("join-room", { playerName: name, roomCode, playerId });
 }
 
-// لاعب جديد
-socket.on("joined-as-player", ({ playerId }) => {
-    localStorage.setItem("playerId", playerId);
-    window.location.href = "player.html";
+socket.on("room-created", ({ roomCode, isHost }) => {
+    if (isHost) {
+        window.location.href = `/host.html?room=${roomCode}`;
+    }
 });
+
+// لاعب جديد
+socket.on("joined-as-player", ({ playerId, isHost }) => {
+    localStorage.setItem("playerId", playerId);
+
+    if (isHost) {
+        window.location.href = `/host.html?room=${roomCode}`;
+    } else {
+        window.location.href = `/player.html?room=${roomCode}`;
+    }
+});
+
 
 // لاعب قديم (كان في نفس الغرفة)
 socket.on("rejoin-game", () => {
