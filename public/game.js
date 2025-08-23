@@ -125,8 +125,13 @@ socket.on('vote-tie', ({ message }) => {
 });
 // عرض الدور
 document.getElementById('role').textContent = role === 'mafia' ? 'مافيا' : 'مواطن';
-// استقبال تحديث قائمة اللاعبين
-socket.emit('player-join-room', { playerName, roomCode });
+let playerId = localStorage.getItem("playerId");
+if (!playerId) {
+  playerId = crypto.randomUUID(); // يولد UUID عشوائي
+  localStorage.setItem("playerId", playerId);
+}
+// إرسال الانضمام إلى الغرفة مع playerId
+socket.emit("player-join-room", { playerId, playerName, roomCode });
 // استقبال تحديث قائمة اللاعبين
 socket.on('update-players', (players) => {
   // 🟢 حساب المشاهدين واللاعبين الفعّالين
@@ -243,7 +248,9 @@ socket.on('you-are-now-host', () => {
     const list = document.getElementById('transferList');
     list.innerHTML = ''; // تنظيف الأزرار القديمة
     // ✅ إعادة توليد أزرار التعيين
-    socket.emit('player-join-room', { playerName, roomCode }); // هذا سيجعل السيرفر يعيد إرسال اللاعبين
+
+    // إرسال الانضمام إلى الغرفة مع playerId
+    socket.emit("player-join-room", { playerId, playerName, roomCode });
   }
 });
 // استقبال حدث نقل المضيف
