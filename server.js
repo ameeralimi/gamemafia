@@ -141,23 +141,28 @@ io.on('connection', (socket) => {
 
     let isSpectator = false;
 
-    // 🟢 لو اللعبة بدأت
+    // لو اللعبة بدأت
     if (room.started) {
-      let existed = room.players.find((p) => p.playerId === playerId);
+      const existed = room.players.find(p => p.playerId === playerId);
       if (!existed) isSpectator = true;
     }
 
-    // 🔄 ابحث بالـ playerId مش بالاسم
-    let player = room.players.find((p) => p.playerId === playerId);
+    // 🔄 ابحث أولاً بالـ playerId
+    let player = room.players.find(p => p.playerId === playerId);
+
+    // لو مالقيته بالـ playerId → جرب بالاسم (احتياطياً عشان ما يتكرر)
+    if (!player) {
+      player = room.players.find(p => p.name === playerName);
+    }
 
     if (player) {
-      // حدث بياناته فقط
+      // ✨ تحديث بيانات اللاعب بدل الإضافة
       player.status = 'online';
       player.id = socket.id;
       player.name = playerName; // لو غير اسمه
       if (isSpectator) player.spectator = true;
     } else {
-      // ➕ لاعب جديد
+      // ➕ لاعب جديد فعلاً
       room.players.push({
         playerId,
         name: playerName,
@@ -172,6 +177,7 @@ io.on('connection', (socket) => {
   });
 
 
+
   socket.on("host-status", ({ roomCode, page }) => {
     if (rooms[roomCode] && rooms[roomCode].hostId === socket.id) {
       rooms[roomCode].hostPage = page; // "host" أو "game"
@@ -184,8 +190,8 @@ io.on('connection', (socket) => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => {
       // نجيب الهوست من قائمة اللاعبين
       const hostPlayer = room.players.find(p => p.isHost);
-      const hostOnline = hostPlayer && hostPlayer.status === "online"; // ← من update-players
-      const hostPage = room.hostPage || "host"; // ← من host-status
+      const hostOnline = hostPlayer && hostPlayer.status === "online"; 
+      const hostPage = room.hostPage || "host"; 
 
       let statusMessage = "❌ الطاولة غير متاحة";
 
@@ -198,18 +204,17 @@ io.on('connection', (socket) => {
       }
 
       return {
-        roomCode,
+        roomCode: code, // 🟢 هنا التعديل
         playerCount: room.players.length,
         started: room.started,
-        hostOnline: room.players.some(p => p.isHost && p.status === "online"), // 🟢
-        statusMessage: room.players.some(p => p.isHost && p.status === "online")
-          ? (room.started ? "🟢 اللعبة بدأت" : "⏳ في انتظار اللاعبين")
-          : "❌ الطاولة غير متاحة"
+        hostOnline,
+        statusMessage
       };
     });
 
     socket.emit("rooms-info", roomsInfo);
   });
+
 
 
 
