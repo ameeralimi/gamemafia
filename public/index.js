@@ -46,10 +46,8 @@ socket.on('rooms-info', rooms => {
         const btn = document.createElement('button');
         
         if (!room.started) {
-            // الغرفة لسا ما بدأت
             btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - في انتظار اللاعبين`;
         } else {
-            // الغرفة بدأت
             btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - لقد بدأت اللعبة (الدخول كمشاهد)`;
         }
 
@@ -61,6 +59,7 @@ socket.on('rooms-info', rooms => {
         list.appendChild(btn);
     });
 });
+
 function showCreateRoom() {
     const name = document.getElementById('playerName').value.trim();
     if (!name) {
