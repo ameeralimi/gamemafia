@@ -32,8 +32,8 @@ socket.on('rooms-info', rooms => {
     const list = document.getElementById('roomsList');
     list.innerHTML = '';
 
-    // فلترة: فقط الغرف اللي الـ host موجود فيها
-    const activeRooms = rooms.filter(room => room.hostOnline);
+    // الفلترة: فقط الغرف اللي الرسالة مو "❌ الطاولة غير متاحة"
+    const activeRooms = rooms.filter(room => room.statusMessage !== "❌ الطاولة غير متاحة");
 
     if (activeRooms.length === 0) {
         const msg = document.createElement('div');
@@ -45,13 +45,7 @@ socket.on('rooms-info', rooms => {
 
     activeRooms.forEach(room => {
         const btn = document.createElement('button');
-        
-        if (!room.started) {
-            btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - في انتظار اللاعبين`;
-        } else {
-            btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - لقد بدأت اللعبة (الدخول كمشاهد)`;
-        }
-
+        btn.textContent = `طاولة ${room.roomCode} - ${room.playerCount} لاعب - ${room.statusMessage}`;
         btn.style.margin = '5px';
         btn.onclick = () => {
             document.getElementById('roomIdField').value = room.roomCode;
@@ -60,6 +54,7 @@ socket.on('rooms-info', rooms => {
         list.appendChild(btn);
     });
 });
+
 
 function showCreateRoom() {
     const name = document.getElementById('playerName').value.trim();
