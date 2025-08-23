@@ -1410,17 +1410,16 @@ document.addEventListener('visibilitychange', () => {
 
 
 
-
-window.addEventListener('load', () => {
-  document.getElementById('Automatic_exclusion').checked = false;
-});
+    // ضبط الإقصاء التلقائي على إيقاف عند تحميل الصفحة
+    window.addEventListener('load', () => {
+      document.getElementById('Automatic_exclusion').checked = true;
+    });
   </script>
   <audio id="voteSound" src="sounds/vote.mp3"></audio>
   <audio id="kickSound" src="sounds/kick.mp3"></audio>
   <audio id="giftSound" src="sounds/gift.mp3"></audio>
-
   <audio id="sound-rose" src="sounds/rose.mp3"></audio>
-  <audio id="sound-tomato" src="sounds/tomato.mp3"></audio>
+  <audio id="sound-tomato" src="sounds/rose.mp3"></audio>
   <audio id="sound-bomb" src="sounds/bomb.mp3"></audio>
   <audio id="sound-donkey" src="sounds/Donkey .mp3"></audio>
   <audio id="kickCitizenSound" src="sounds/mafia.mp3"></audio>
