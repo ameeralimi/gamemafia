@@ -129,6 +129,15 @@ socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
 });
+function playSound(id) {
+    const enableSounds = document.getElementById('toggleSounds')?.checked;
+    if (!enableSounds) return;
+    const audio = document.getElementById(id);
+    if (audio) {
+    audio.currentTime = 0;
+    audio.play();
+    }
+}
 // ✅ إعدادات المايك والسماعة
 // هذا الكود يستخدم WebRTC للتواصل الصوتي بين اللاعبين في نفس الغرفة
 (function initVoiceUI() {
