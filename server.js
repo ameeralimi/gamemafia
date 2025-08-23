@@ -40,9 +40,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 // ===================== حالة اللعبة =====================
 // rooms: { [roomCode]: { host, mafiaCount, players[], started, votes{}, round, roles{}, kickedPlayers[], showVoteMessages } }
-const { v4: uuidv4 } = require("uuid");
 const rooms = {};
-const players = new Map(); // playerId -> { roomCode, socketId }
 
 // ===================== حالة الصوت (WebRTC Signaling) =====================
 // voiceRooms: { [roomCode]: Set<socketId> }
@@ -60,14 +58,13 @@ io.on('connection', (socket) => {
   console.log('🔌 مستخدم جديد متصل:', socket.id);
 
   // ------------- منطق إنشاء الطاولة والانضمام -------------
-  // إنشاء الغرفة
   socket.on('create-room', ({ playerName, mafiaCount, roomCode }) => {
+    socket.join(roomCode);
+
     if (!rooms[roomCode]) {
       rooms[roomCode] = {
-        hostId: socket.id,
-        hostName: playerName,
+        host: null,
         mafiaCount,
-        hostOnline: true,
         players: [],
         started: false,
         votes: {},
@@ -78,94 +75,73 @@ io.on('connection', (socket) => {
       };
     }
 
-    // رجّع للعميل انه هو الهوست
-    socket.emit("room-created", { roomCode, isHost: true });
+    if (!rooms[roomCode].host) {
+      rooms[roomCode].host = playerName;
+    }
+
+    rooms[roomCode].players.push({ name: playerName, status: 'online', id: socket.id });
+
+    io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
 
-
-  // الانضمام للغرفة
-  socket.on("join-room", ({ playerName, roomCode, playerId }) => {
-    if (!rooms[roomCode]) {
-      socket.emit("room-not-found");
-      return;
-    }
-
-    // لو اللاعب قديم عنده playerId
-    if (playerId && players.has(playerId)) {
-      const playerData = players.get(playerId);
-
-      if (playerData.roomCode === roomCode) {
-        playerData.socketId = socket.id;
-        players.set(playerId, playerData);
-
-        socket.join(roomCode);
-
-        rooms[roomCode].players = rooms[roomCode].players.map(p =>
-          p.playerId === playerId
-            ? { ...p, name: playerName, status: "online", id: socket.id }
-            : p
-        );
-
-        socket.emit("rejoin-game", { playerId });
-        io.to(roomCode).emit("update-players", rooms[roomCode].players);
-        return;
-      }
-    }
-
-    // 🆕 لاعب جديد
-    const newPlayerId = uuidv4();
-    players.set(newPlayerId, { roomCode, socketId: socket.id });
-
-    const playerInfo = {
-      playerId: newPlayerId,
-      name: playerName,
-      status: "online",
-      id: socket.id,
-      isHost: socket.id === rooms[roomCode].hostId // ✅ تحديد الهوست هنا
-    };
-
-    rooms[roomCode].players.push(playerInfo);
-
+  socket.on('join-room', ({ playerName, roomCode }) => {
+    if (!rooms[roomCode]) return;
     socket.join(roomCode);
-
-    socket.emit("joined-as-player", { playerId: newPlayerId, isHost: playerInfo.isHost });
-    io.to(roomCode).emit("update-players", rooms[roomCode].players);
+    rooms[roomCode].players.push({ name: playerName, status: 'online', id: socket.id });
+    io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
 
-
-
-
-
-  socket.on('player-join-room', ({ playerId, playerName, roomCode }) => {
+  socket.on('player-join-room', ({ playerName, roomCode }) => {
     const room = rooms[roomCode];
     if (!room) return;
 
+    // 🛑 لو كان مطرود → يدخل كمشاهد
+    if (room.kickedPlayers.includes(playerName)) {
+      let player = room.players.find((p) => p.name === playerName);
+      if (player) {
+        player.status = 'online';
+        player.id = socket.id;
+        player.spectator = true;
+      } else {
+        room.players.push({
+          name: playerName,
+          status: 'online',
+          id: socket.id,
+          spectator: true
+        });
+      }
+      socket.join(roomCode);
+      io.to(roomCode).emit('update-players', room.players);
+      return;
+    }
+
     let isSpectator = false;
 
-    // لو اللعبة بدأت
+    // 🟢 التحقق من gameId إذا اللعبة بدأت
     if (room.started) {
-      const existed = room.players.find(p => p.playerId === playerId);
-      if (!existed) isSpectator = true;
+      let existed = room.players.find((p) => p.name === playerName);
+
+      if (existed) {
+        // إذا كان عنده نفس الـ gameId → لاعب
+        if (existed.gameId !== room.currentGameId) {
+          isSpectator = true;
+        }
+      } else {
+        // لاعب جديد يدخل بعد بداية اللعبة → مشاهد
+        isSpectator = true;
+      }
     }
 
-    // 🔄 ابحث أولاً بالـ playerId
-    let player = room.players.find(p => p.playerId === playerId);
-
-    // لو مالقيته بالـ playerId → جرب بالاسم (احتياطياً عشان ما يتكرر)
-    if (!player) {
-      player = room.players.find(p => p.name === playerName);
-    }
+    // 🔄 لو اللاعب موجود أصلاً
+    let player = room.players.find((p) => p.name === playerName);
 
     if (player) {
-      // ✨ تحديث بيانات اللاعب بدل الإضافة
       player.status = 'online';
       player.id = socket.id;
-      player.name = playerName; // لو غير اسمه
       if (isSpectator) player.spectator = true;
     } else {
-      // ➕ لاعب جديد فعلاً
+      // ➕ لاعب جديد
       room.players.push({
-        playerId,
         name: playerName,
         status: 'online',
         id: socket.id,
@@ -179,37 +155,14 @@ io.on('connection', (socket) => {
 
 
 
-  socket.on("host-status", ({ roomCode, page }) => {
-    if (rooms[roomCode] && rooms[roomCode].hostId === socket.id) {
-      rooms[roomCode].hostPage = page; // "host" أو "game"
-    }
-  });
-
-
-
-  socket.on("get-rooms-info", () => {
-  const roomsInfo = Object.entries(rooms).map(([code, room]) => {
-    return {
+  socket.on('get-rooms-info', () => {
+    const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
       roomCode: code,
       playerCount: room.players.length,
-      started: room.started,
-      hostOnline: room.hostOnline, // ✅ صار ثابت منطقياً
-      statusMessage: room.hostOnline
-        ? (room.started ? "🟢 اللعبة بدأت" : "⏳ في انتظار اللاعبين")
-        : "❌ الطاولة غير متاحة"
-    };
+      started: room.started
+    }));
+    socket.emit('rooms-info', roomsInfo);
   });
-
-  socket.emit("rooms-info", roomsInfo);
-});
-
-
-
-
-
-
-
-
 
   // ------------- الدردشة والهدايا -------------
   socket.on('chat-message', ({ roomCode, playerName, message }) => {
@@ -500,13 +453,11 @@ io.on('connection', (socket) => {
       const player = room.players.find((p) => p.id === socket.id);
       if (player) {
         player.status = 'offline';
-        if (player.playerId === room.hostId || player.isHost) {
-          room.hostOnline = false; // 🟥 نخليها false
-        }
         io.to(code).emit('update-players', room.players);
         break;
       }
     }
+
     if (socket.roomCode) {
       io.to(socket.roomCode).emit("voice-peer-left", { id: socket.id });
     }
