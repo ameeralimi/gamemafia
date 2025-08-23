@@ -198,11 +198,13 @@ io.on('connection', (socket) => {
       }
 
       return {
-        roomCode: code,
+        roomCode,
         playerCount: room.players.length,
         started: room.started,
-        hostOnline,      // ← أضفناها
-        statusMessage
+        hostOnline: room.players.some(p => p.isHost && p.status === "online"), // 🟢
+        statusMessage: room.players.some(p => p.isHost && p.status === "online")
+          ? (room.started ? "🟢 اللعبة بدأت" : "⏳ في انتظار اللاعبين")
+          : "❌ الطاولة غير متاحة"
       };
     });
 
