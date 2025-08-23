@@ -40,7 +40,9 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 // ===================== حالة اللعبة =====================
 // rooms: { [roomCode]: { host, mafiaCount, players[], started, votes{}, round, roles{}, kickedPlayers[], showVoteMessages } }
+const { v4: uuidv4 } = require("uuid");
 const rooms = {};
+const players = new Map(); // playerId -> { roomCode, socketId }
 
 // ===================== حالة الصوت (WebRTC Signaling) =====================
 // voiceRooms: { [roomCode]: Set<socketId> }
@@ -84,11 +86,43 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
 
-  socket.on('join-room', ({ playerName, roomCode }) => {
-    if (!rooms[roomCode]) return;
+  socket.on("join-room", ({ playerName, roomCode, playerId }) => {
+    // 🟥 1. الغرفة غير موجودة
+    if (!rooms[roomCode]) {
+      socket.emit("room-not-found");
+      return;
+    }
+
+    // 🟩 2. لو اللاعب قديم (playerId موجود وعندنا مسجل في الماب)
+    if (playerId && players.has(playerId)) {
+      const playerData = players.get(playerId);
+
+      // تحقق انه فعلاً يرجع لنفس الغرفة
+      if (playerData.roomCode === roomCode) {
+        // حدث socketId الجديد
+        playerData.socketId = socket.id;
+        players.set(playerId, playerData);
+
+        socket.join(roomCode);
+        socket.emit("rejoin-game");
+        return;
+      }
+    }
+
+    // 🟦 3. لاعب جديد
+    const newPlayerId = uuidv4();
+    players.set(newPlayerId, { roomCode, socketId: socket.id });
+
+    const playerInfo = { name: playerName, status: "online", id: socket.id };
+    rooms[roomCode].players.push(playerInfo);
+
     socket.join(roomCode);
-    rooms[roomCode].players.push({ name: playerName, status: 'online', id: socket.id });
-    io.to(roomCode).emit('update-players', rooms[roomCode].players);
+
+    // رجّع للعميل playerId يخزنه بالـ localStorage
+    socket.emit("joined-as-player", { playerId: newPlayerId });
+
+    // حدث القائمة عند الكل
+    io.to(roomCode).emit("update-players", rooms[roomCode].players);
   });
 
   socket.on('player-join-room', ({ playerName, roomCode }) => {
@@ -154,9 +188,6 @@ io.on('connection', (socket) => {
   });
 
 
-  socket.on("voice-send", (data) => {
-    socket.to(roomCode).emit("voice-receive", data);
-  });
 
   socket.on('get-rooms-info', () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
@@ -410,6 +441,11 @@ io.on('connection', (socket) => {
 
   socket.on("voice-ice", ({ roomCode, to, candidate }) => {
     io.to(to).emit("voice-ice", { from: socket.id, candidate });
+  });
+
+
+  socket.on("voice-send", (data) => {
+    socket.to(roomCode).emit("voice-receive", data);
   });
 
   // socket.on("disconnect", () => {
