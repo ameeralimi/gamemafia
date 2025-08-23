@@ -450,6 +450,10 @@ socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
     wrap.appendChild(hint);
     const anchor = document.querySelector('.players') || container.firstChild;
     container.insertBefore(wrap, anchor);
+    // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
+    window.addEventListener("load", () => {
+        micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
+    });
 })();
 let localStream = null; // تدفق المايك
 let micOn = false; // هل المايك شغال
@@ -694,9 +698,5 @@ document.addEventListener('visibilitychange', () => {
     socket.connect();
     socket.emit('voice-join', { roomCode, playerName });
     }
-});
-// ✅ شغل المايك مباشرة بعد إنشاء الأزرار
-window.addEventListener("load", () => {
-    micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
 });
 // نهاية كود الخاص بالدردشة الصوتية
