@@ -67,6 +67,7 @@ io.on('connection', (socket) => {
         hostId: socket.id,
         hostName: playerName,
         mafiaCount,
+        hostOnline: true,
         players: [],
         started: false,
         votes: {},
@@ -187,33 +188,20 @@ io.on('connection', (socket) => {
 
 
   socket.on("get-rooms-info", () => {
-    const roomsInfo = Object.entries(rooms).map(([code, room]) => {
-      // نجيب الهوست من قائمة اللاعبين
-      const hostPlayer = room.players.find(p => p.isHost);
-      const hostOnline = hostPlayer && hostPlayer.status === "online"; 
-      const hostPage = room.hostPage || "host"; 
-
-      let statusMessage = "❌ الطاولة غير متاحة";
-
-      if (hostOnline) {
-        if (room.started && hostPage === "game") {
-          statusMessage = "✅ لقد بدأت اللعبة - الدخول كمشاهد";
-        } else if (!room.started && hostPage === "host") {
-          statusMessage = "⏳ في انتظار اللاعبين";
-        }
-      }
-
-      return {
-        roomCode: code, // 🟢 هنا التعديل
-        playerCount: room.players.length,
-        started: room.started,
-        hostOnline,
-        statusMessage
-      };
-    });
-
-    socket.emit("rooms-info", roomsInfo);
+  const roomsInfo = Object.entries(rooms).map(([code, room]) => {
+    return {
+      roomCode: code,
+      playerCount: room.players.length,
+      started: room.started,
+      hostOnline: room.hostOnline, // ✅ صار ثابت منطقياً
+      statusMessage: room.hostOnline
+        ? (room.started ? "🟢 اللعبة بدأت" : "⏳ في انتظار اللاعبين")
+        : "❌ الطاولة غير متاحة"
+    };
   });
+
+  socket.emit("rooms-info", roomsInfo);
+});
 
 
 
@@ -512,11 +500,13 @@ io.on('connection', (socket) => {
       const player = room.players.find((p) => p.id === socket.id);
       if (player) {
         player.status = 'offline';
+        if (player.playerId === room.hostId || player.isHost) {
+          room.hostOnline = false; // 🟥 نخليها false
+        }
         io.to(code).emit('update-players', room.players);
         break;
       }
     }
-
     if (socket.roomCode) {
       io.to(socket.roomCode).emit("voice-peer-left", { id: socket.id });
     }
