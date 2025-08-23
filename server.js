@@ -65,8 +65,8 @@ io.on('connection', (socket) => {
 
     if (!rooms[roomCode]) {
       rooms[roomCode] = {
-        hostId: null,            
-        hostName: null,          
+        hostId: null,
+        hostName: null,
         mafiaCount,
         players: [],
         started: false,
@@ -84,21 +84,29 @@ io.on('connection', (socket) => {
       rooms[roomCode].hostName = playerName;
     }
 
-    // نضيف اللاعب (ونحدد حالة الهوست)
-    rooms[roomCode].players.push({ 
-      name: playerName, 
-      status: 'online', 
-      id: socket.id, 
-      isHost: socket.id === rooms[roomCode].hostId  
-    });
+    // إضافة/تحديث اللاعب بدون تكرار
+    let player = rooms[roomCode].players.find(p => p.id === socket.id);
 
-    // تحديث حالة الهوست بشكل واضح
+    if (player) {
+      player.status = 'online';
+      player.name = playerName;
+    } else {
+      rooms[roomCode].players.push({ 
+        name: playerName, 
+        status: 'online', 
+        id: socket.id, 
+        isHost: socket.id === rooms[roomCode].hostId  
+      });
+    }
+
+    // تحديث حالة الهوست
     if (socket.id === rooms[roomCode].hostId) {
-      rooms[roomCode].hostStatus = 'online';   // ← جديدة
+      rooms[roomCode].hostStatus = 'online';
     }
 
     io.to(roomCode).emit('update-players', rooms[roomCode].players);
   });
+
 
 
 
