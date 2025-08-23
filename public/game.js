@@ -346,6 +346,15 @@ document.addEventListener("visibilitychange", () => {
     socket.connect(); // إعادة الاتصال عند الرجوع من الخلفية
   }
 });
+function playSound(id) {
+    const enableSounds = document.getElementById('toggleSounds')?.checked;
+    if (!enableSounds) return;
+    const audio = document.getElementById(id);
+    if (audio) {
+    audio.currentTime = 0;
+    audio.play();
+    }
+}
 // العودة الى الرئيسية
 function goToHome() {
   window.location.href = 'index.html';
