@@ -160,8 +160,6 @@ socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
     // ✅ شغل المايك مباشرة بعد إنشاء الأزرار
     window.addEventListener("load", () => {
         micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
-        spkBtn.click(); // كأن المستخدم ضغط على زر السماعة
-        micBtn.click(); // كأن المستخدم ضغط على زر الميكروفون
     });
 })();
 let localStream = null; // تدفق المايك
