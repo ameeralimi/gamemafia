@@ -154,6 +154,9 @@ io.on('connection', (socket) => {
   });
 
 
+  socket.on("voice-send", (data) => {
+    socket.to(roomCode).emit("voice-receive", data);
+  });
 
   socket.on('get-rooms-info', () => {
     const roomsInfo = Object.entries(rooms).map(([code, room]) => ({
@@ -407,11 +410,6 @@ io.on('connection', (socket) => {
 
   socket.on("voice-ice", ({ roomCode, to, candidate }) => {
     io.to(to).emit("voice-ice", { from: socket.id, candidate });
-  });
-
-
-  socket.on("voice-send", (data) => {
-    socket.to(roomCode).emit("voice-receive", data);
   });
 
   // socket.on("disconnect", () => {
