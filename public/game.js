@@ -423,6 +423,8 @@ socket.on('receive-gift', ({ playerName: sender, gift, target }) => {
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
 });
+// تحديث حاله الرئيسي
+socket.emit("host-status", { roomCode, page: "game" });
 // ✅ إعدادات المايك والسماعة
 // هذا الكود يستخدم WebRTC للتواصل الصوتي بين اللاعبين في نفس الغرفة
 (function initVoiceUI() {
